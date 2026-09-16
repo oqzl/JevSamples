@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <meta name="theme-color" content="#0b0d10">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Jev World</title>
+  <link rel="manifest" href="./manifest.webmanifest?v=__COMMIT_SHA__">
+  <link rel="icon" href="./icon.svg?v=__COMMIT_SHA__" type="image/svg+xml">
+  <link rel="stylesheet" href="./style.css?v=__COMMIT_SHA__">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <div class="eyebrow">TYPESAFE JEV / SYSTEM ONE DEMO</div>
+      <h1>JEV WORLD</h1>
+    </div>
+    <div class="status-strip">
+      <span id="apiStatus" class="status-dot">IDLE</span>
+      <span>TURN <b id="turnLabel">0</b></span>
+      <span>5s / TURN</span>
+    </div>
+  </header>
+
+  <main class="shell">
+    <section class="world-panel panel">
+      <div class="panel-head">
+        <div>
+          <div class="eyebrow">MIRROR WARD</div>
+          <h2>Topology creates meaning</h2>
+        </div>
+        <div class="controls">
+          <button id="startButton" class="primary">START</button>
+          <button id="stepButton">STEP</button>
+          <button id="resetButton">RESET</button>
+        </div>
+      </div>
+
+      <div class="graph-wrap">
+        <svg id="worldGraph" viewBox="0 0 900 560" role="img" aria-label="Fictional district topology"></svg>
+        <div class="graph-legend">
+          <span><i class="legend-node"></i> place</span>
+          <span><i class="legend-agent"></i> agent</span>
+          <span>node bars: danger / opportunity / anomaly</span>
+        </div>
+      </div>
+
+      <div class="scenario-grid">
+        <label class="field wide">
+          <span>WORLD LAW — natural language changes behavior without changing code</span>
+          <textarea id="worldLaw" rows="3">People value safety over speed, but each inhabitant still follows their own role and goal. The Shrine is socially important. The River is attractive when calm and dangerous when disturbed. The Tower offers information but little shelter.</textarea>
+        </label>
+        <label class="field wide">
+          <span>INTERVENTION — injected into the next turn</span>
+          <input id="intervention" maxlength="500" placeholder="e.g. A child is lost near the station.">
+        </label>
+        <div class="preset-row">
+          <button class="preset" data-event="Heavy rain is rapidly raising the River. Low routes may become dangerous.">FLOOD</button>
+          <button class="preset" data-event="A night festival has begun at the Shrine. Crowds, trade, and social activity are surging.">FESTIVAL</button>
+          <button class="preset" data-event="A blackout has hit the Station and Tower. Information is scarce and movement is confused.">BLACKOUT</button>
+          <button class="preset" data-event="A credible rumor says a sealed cache of medicine is hidden near the Alley.">RUMOR</button>
+          <button class="preset" data-event="">CLEAR</button>
+        </div>
+      </div>
+    </section>
+
+    <aside class="side-stack">
+      <section class="panel metrics-panel">
+        <div class="panel-head compact">
+          <div>
+            <div class="eyebrow">ONE CALL / MANY JUDGMENTS</div>
+            <h2>Request</h2>
+          </div>
+        </div>
+        <div class="metrics">
+          <div><span>LATENCY</span><b id="latencyMetric">—</b></div>
+          <div><span>QUESTIONS</span><b id="questionMetric">30</b></div>
+          <div><span>INPUT TOKENS</span><b id="tokenMetric">—</b></div>
+          <div><span>EST. COST</span><b id="costMetric">—</b></div>
+        </div>
+        <div class="policy-row">
+          <label>
+            Decision
+            <select id="decisionMode">
+              <option value="sample">SAMPLE PROBABILITIES</option>
+              <option value="argmax">ARGMAX</option>
+            </select>
+          </label>
+          <label class="gate">
+            <input id="gateEnabled" type="checkbox">
+            Confidence gate
+          </label>
+          <label>
+            Gate
+            <input id="gateThreshold" type="range" min="0" max="0.9" step="0.05" value="0.35">
+            <output id="gateOutput">0.35</output>
+          </label>
+        </div>
+      </section>
+
+      <section class="panel agent-panel">
+        <div class="panel-head compact">
+          <div>
+            <div class="eyebrow">AGENTS</div>
+            <h2>Six bounded minds</h2>
+          </div>
+        </div>
+        <div id="agentList" class="agent-list"></div>
+      </section>
+
+      <section class="panel inspector-panel">
+        <div class="panel-head compact">
+          <div>
+            <div class="eyebrow">TYPED JUDGMENTS</div>
+            <h2 id="inspectorTitle">Select an agent</h2>
+          </div>
+        </div>
+        <div id="inspector" class="inspector empty">
+          Jev does not write a rationale here. The demo consumes typed probabilities and lets code decide what happens.
+        </div>
+      </section>
+    </aside>
+
+    <section class="panel log-panel">
+      <div class="panel-head compact">
+        <div>
+          <div class="eyebrow">AUTHORITATIVE CODE</div>
+          <h2>World log</h2>
+        </div>
+        <span class="muted">Jev judges; JavaScript mutates state.</span>
+      </div>
+      <ol id="eventLog" class="event-log"></ol>
+    </section>
+
+    <section class="panel raw-panel">
+      <details>
+        <summary>RAW LAST RESPONSE</summary>
+        <pre id="rawResponse">No response yet.</pre>
+      </details>
+    </section>
+  </main>
+
+  <script src="./app.js?v=__COMMIT_SHA__" defer></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      addEventListener("load", () => navigator.serviceWorker.register("./sw.js?v=__COMMIT_SHA__", { updateViaCache: "none" }));
+    }
+  </script>
+</body>
+</html>

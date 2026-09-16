@@ -1,0 +1,19 @@
+{
+  "id": "./",
+  "name": "Jev World",
+  "short_name": "Jev World",
+  "description": "A five-second agent simulation powered by TypeSafe Jev typed probabilistic decisions.",
+  "start_url": "./?v=__COMMIT_SHA__",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0b0d10",
+  "theme_color": "#0b0d10",
+  "icons": [
+    {
+      "src": "./icon.svg?v=__COMMIT_SHA__",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
