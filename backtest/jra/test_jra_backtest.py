@@ -36,7 +36,10 @@ class TestJraBacktest(unittest.TestCase):
             blob=str(state)
             self.assertNotIn("Secret Horse",blob)
             self.assertNotIn("Secret Jockey",blob)
-            self.assertNotIn("2.0",blob)
+            self.assertNotIn("win_odds", state["runners"][0])
+            self.assertNotIn("popularity", state["runners"][0])
+            self.assertNotIn("finish", state["runners"][0])
+            self.assertEqual(mapping["r01"]["win_odds"], 2.0)
             self.assertEqual(mapping["r01"]["finish"],1)
             self.assertEqual(state["runners"][0]["history"]["recent_finishes"],[2])
 
