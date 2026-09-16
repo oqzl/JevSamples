@@ -2,6 +2,10 @@
 
 Experiments that use TypeSafe Jev as a machine-native intelligence primitive.
 
+## Backtest: JRA historical prediction
+
+`backtest/jra/` tests Jev against the Kaggle JRA historical dataset without committing the dataset itself. The default benchmark anonymizes identities and withholds current-race odds/popularity from model state to reduce memorization and market leakage. See [backtest/jra/README.md](backtest/jra/README.md).
+
 ## Demo: Jev World — Common Sense at 5s/turn
 
 A small agent simulation where topology and natural-language context create behavior.
