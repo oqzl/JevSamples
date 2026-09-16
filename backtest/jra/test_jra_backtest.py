@@ -30,7 +30,7 @@ class TestJraBacktest(unittest.TestCase):
             old=("202001010101","2020-01-01","h1","Secret Horse","1",1,2,"M4",56,"Secret Jockey","Secret Trainer",3.2,2,480,2,34.2)
             cur1=("202002010101","2020-02-01","h1","Secret Horse","1",1,1,"M4",56,"Secret Jockey","Secret Trainer",2.0,1,482,2,33.8)
             cur2=("202002010101","2020-02-01","h2","Other Horse","2",2,2,"M4",56,"Other Jockey","Other Trainer",4.0,2,470,0,34.0)
-            db.executemany("INSERT INTO runners VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",[old,cur1,cur2])
+            db.executemany("INSERT INTO runners VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",[old,cur1,cur2])
             built=jb.build_state(db,"202002010101")
             state,mapping=built
             blob=str(state)

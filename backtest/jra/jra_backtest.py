@@ -208,7 +208,7 @@ def build_db(args):
             )
             db.execute(
                 """INSERT OR REPLACE INTO runners
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (rid, dt, horse_key, name, integer(value(row,mapping,"frame")), post,
                  integer(value(row,mapping,"finish")), value(row,mapping,"sex_age"),
                  number(value(row,mapping,"carried_weight")), value(row,mapping,"jockey"),
