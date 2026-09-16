@@ -3,6 +3,9 @@
   "name": "jev-samples",
   "main": "src/worker.js",
   "compatibility_date": "2026-09-16",
+  "secrets": {
+    "required": ["TYPESAFE_API_KEY"]
+  },
   "assets": {
     "directory": "./web",
     "binding": "ASSETS",
