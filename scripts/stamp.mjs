@@ -16,10 +16,34 @@ function revision() {
   }
 }
 
-const sha = revision();
-const targets = ["web/index.html", "web/sw.js", "web/manifest.webmanifest"];
-for (const path of targets) {
-  const source = readFileSync(path, "utf8");
-  writeFileSync(path, source.replaceAll("__COMMIT_SHA__", sha));
+function stampQueryVersions(source, sha) {
+  return source.replace(
+    /\?v=(?:__COMMIT_SHA__|dev|[0-9a-f]{7,40})/gi,
+    "?v=" + sha,
+  );
 }
+
+const sha = revision();
+
+const indexPath = "web/index.html";
+writeFileSync(indexPath, stampQueryVersions(readFileSync(indexPath, "utf8"), sha));
+
+const manifestPath = "web/manifest.webmanifest";
+writeFileSync(
+  manifestPath,
+  stampQueryVersions(readFileSync(manifestPath, "utf8"), sha),
+);
+
+const swPath = "web/sw.js";
+const sw = readFileSync(swPath, "utf8")
+  .replace(
+    /const REV = "(?:__COMMIT_SHA__|dev|[0-9a-f]{7,40})";/,
+    'const REV = "' + sha + '";',
+  )
+  .replace(
+    /\?v=(?:__COMMIT_SHA__|dev|[0-9a-f]{7,40})/gi,
+    "?v=" + sha,
+  );
+writeFileSync(swPath, sw);
+
 console.log("Stamped deployment revision " + sha);

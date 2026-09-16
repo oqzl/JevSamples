@@ -1,0 +1,33 @@
+name: Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax check
+        run: |
+          node --check src/worker.js
+          node --check web/app.js
+          node --check web/sw.js
+          node --check scripts/stamp.mjs
+      - name: Verify repeatable revision stamping
+        run: |
+          node scripts/stamp.mjs
+          node scripts/stamp.mjs
+          ! grep -R "__COMMIT_SHA__" web/
+      - name: Verify Cloudflare bundle
+        run: npx --yes wrangler@4 deploy --dry-run --outdir /tmp/jev-samples-worker
