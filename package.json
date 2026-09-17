@@ -1,0 +1,10 @@
+{
+  "name": "jev-samples",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/stamp.mjs",
+    "dev": "npx wrangler dev",
+    "deploy": "npx wrangler deploy"
+  }
+}
