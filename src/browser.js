@@ -15,6 +15,8 @@ const ui = {
   ripOverlay: $("ripOverlay"),
   ripArt: $("ripArt"),
   rogueStatus: $("rogueStatus"),
+  equipmentList: $("equipmentList"),
+  packList: $("packList"),
   follow: $("followButton"),
   run: $("runButton"),
   fast: $("fastButton"),
@@ -511,6 +513,7 @@ class JevController {
     this.currentAbort = null;
     this.bootstrapInventory = true;
     this.bootstrapInProgress = false;
+    this.inventoryRefreshPending = false;
     this.pendingTurn = null;
     this.noEffectLabels = new Set();
     this.recentActions = [];
@@ -519,6 +522,7 @@ class JevController {
     this.lastTacticalFingerprint = "";
     this.screen = Array.from({ length: ROWS }, () => " ".repeat(COLS));
     this.updateModeUI();
+    this.renderInventory();
   }
 
   screenUpdated(screen) {
@@ -550,14 +554,72 @@ class JevController {
   }
 
   learnInventory(message) {
+    let changed = false;
     let match = message.match(/^([a-z])\)\s+(.+)$/);
     if (match) {
       this.inventory[match[1]] = match[2];
+      changed = true;
+    } else {
+      match = message.match(/^(.+?)\s+\(([a-z])\)$/);
+      if (match) {
+        this.inventory[match[2]] = match[1];
+        changed = true;
+      }
+    }
+    if (/empty handed|aren't carrying anything/i.test(message)) {
+      this.inventory = {};
+      changed = true;
+    }
+    if (changed) this.renderInventory();
+  }
+
+  renderInventory() {
+    const equipment = {
+      WPN: null,
+      ARM: null,
+      LEFT: null,
+      RIGHT: null,
+    };
+    const pack = Object.entries(this.inventory).sort(([a], [b]) => a.localeCompare(b));
+
+    for (const [letter, description] of pack) {
+      if (/\(weapon in hand\)/i.test(description)) equipment.WPN = [letter, description];
+      if (/\(being worn\)/i.test(description)) equipment.ARM = [letter, description];
+      if (/\(on left hand\)/i.test(description)) equipment.LEFT = [letter, description];
+      if (/\(on right hand\)/i.test(description)) equipment.RIGHT = [letter, description];
+    }
+
+    ui.equipmentList.replaceChildren();
+    for (const [slot, entry] of Object.entries(equipment)) {
+      const row = document.createElement("div");
+      const label = document.createElement("span");
+      const value = document.createElement("b");
+      label.textContent = slot;
+      value.textContent = entry
+        ? entry[1].replace(/\s+\((?:weapon in hand|being worn|on left hand|on right hand)\)$/i, "")
+        : "—";
+      row.append(label, value);
+      ui.equipmentList.appendChild(row);
+    }
+
+    ui.packList.replaceChildren();
+    if (pack.length === 0) {
+      const li = document.createElement("li");
+      li.className = "empty";
+      li.textContent = "—";
+      ui.packList.appendChild(li);
       return;
     }
-    match = message.match(/^(.+?)\s+\(([a-z])\)$/);
-    if (match) this.inventory[match[2]] = match[1];
-    if (/empty handed|aren't carrying anything/i.test(message)) this.inventory = {};
+    for (const [letter, description] of pack) {
+      const li = document.createElement("li");
+      const key = document.createElement("b");
+      const text = document.createElement("span");
+      key.textContent = letter + ")";
+      text.textContent = description
+        .replace(/\s+\((?:weapon in hand|being worn|on left hand|on right hand)\)$/i, "");
+      li.append(key, text);
+      ui.packList.appendChild(li);
+    }
   }
 
   renderMessages() {
@@ -666,9 +728,12 @@ class JevController {
       return ESC;
     }
 
-    if (this.bootstrapInventory && phase === "turn") {
+    if ((this.bootstrapInventory || this.inventoryRefreshPending) && phase === "turn") {
       this.bootstrapInventory = false;
+      this.inventoryRefreshPending = false;
       this.bootstrapInProgress = true;
+      this.inventory = {};
+      this.renderInventory();
       ui.apiStatus.textContent = "SCAN PACK";
       return "i".charCodeAt(0);
     }
@@ -809,6 +874,9 @@ class JevController {
       this.lastTacticalFingerprint = tacticFingerprint;
       const tactic = await this.askTactic(screen);
       if (Number.isFinite(tactic.key)) {
+        if (new Set(["eat", "quaff", "read_scroll", "wield", "wear_armor", "take_off_armor", "put_on_ring", "remove_ring", "zap", "drop"]).has(tactic.label)) {
+          this.inventoryRefreshPending = true;
+        }
         ui.apiStatus.textContent = "TACTIC";
         return tactic.key;
       }

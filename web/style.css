@@ -140,7 +140,60 @@ h2 { margin-top: 4px; font: 700 13px/1.25 ui-monospace, SFMono-Regular, Menlo, m
 .terminal-viewport { border-radius: 6px 6px 0 0; }
 .screen-note { margin-top: 5px; color: var(--muted); font-size: 10px; line-height: 1.35; }
 
-.controls { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 12px; }
+.inventory-grid {
+  display: grid;
+  grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr);
+  gap: 6px;
+  margin-top: 8px;
+}
+.inventory-pane {
+  min-width: 0;
+  height: 112px;
+  padding: 8px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+}
+.equipment-list {
+  display: grid;
+  gap: 4px;
+  margin-top: 7px;
+  font: 9px/1.25 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.equipment-list > div {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 5px;
+}
+.equipment-list span { color: var(--muted); }
+.equipment-list b {
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pack-list {
+  height: 82px;
+  margin: 6px 0 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+  font: 9px/1.25 ui-monospace, SFMono-Regular, Menlo, monospace;
+  scrollbar-color: #405346 #080b09;
+}
+.pack-list li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 4px;
+  padding: 2px 0;
+}
+.pack-list b { color: var(--accent); font-weight: 500; }
+.pack-list span { color: var(--text); overflow-wrap: anywhere; }
+.pack-list .empty { display: block; color: var(--muted); }
+
+.controls { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 10px; }
 .controls button {
   min-width: 0;
   min-height: 46px;
