@@ -1,6 +1,6 @@
 const TYPESAFE_URL = "https://api.typesafe.ai/v1/systemone";
 const MAX_BODY_BYTES = 16000;
-const PHASES = new Set(["turn", "direction", "item", "hand"]);
+const PHASES = new Set(["turn", "goal", "direction", "item", "hand"]);
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -43,7 +43,21 @@ function sanitizeInput(input) {
     ? input.avoidLabels.filter((label) => typeof label === "string").slice(-16)
     : [];
 
-  return { phase, screen, inventory, recentMessages, recentActions, avoidLabels };
+  const candidates = Array.isArray(input.candidates)
+    ? input.candidates.slice(0, 20).flatMap((candidate) => {
+        if (!candidate || typeof candidate !== "object") return [];
+        const id = cleanText(candidate.id, 80);
+        const description = cleanText(candidate.description, 240);
+        const type = cleanText(candidate.type, 40);
+        const x = Number(candidate.x);
+        const y = Number(candidate.y);
+        const distance = Number(candidate.distance);
+        if (!id || !description || !Number.isFinite(x) || !Number.isFinite(y)) return [];
+        return [{ id, description, type, x, y, distance: Number.isFinite(distance) ? distance : null }];
+      })
+    : [];
+
+  return { phase, screen, inventory, recentMessages, recentActions, avoidLabels, candidates };
 }
 
 function choice(instructions, criteria) {
@@ -253,6 +267,30 @@ function itemQuestion(state) {
 }
 
 function buildQuestion(state) {
+  if (state.phase === "goal") {
+    const criteria = {};
+    const targets = {};
+    for (const candidate of state.candidates) {
+      criteria[candidate.id] = candidate.description;
+      targets[candidate.id] = candidate;
+    }
+    if (Object.keys(criteria).length === 0) throw new Error("goal phase requires candidates");
+    return {
+      question: choice(
+        {
+          role: "You are choosing a persistent navigation goal for an autonomous Rogue 5.4.4 player. Code, not you, will compute and follow the shortest known path to the chosen coordinate.",
+          objective: "WIN THE GAME: survive, explore each level, descend toward level 26, obtain the Amulet of Yendor, then climb back to the surface.",
+          priority: "First handle immediate survival or a nearby blocking monster. The Amulet is mandatory. When safe, visible useful items are normally worth collecting, especially food and equipment. Newly discovered doors and unexplored frontiers are the main way to expand the known map and should be pursued rather than wandering inside an already seen room. Gold is optional. Use stairs when there is no clearly better nearby objective or the useful reachable area is already explored.",
+          persistence: "Pick a destination worth committing several movement turns to. Do not optimize the next single key; choose what the player should accomplish next.",
+          question: "Which candidate should become the next persistent goal?",
+        },
+        criteria,
+      ),
+      keys: null,
+      targets,
+    };
+  }
+
   if (state.phase === "direction") {
     return {
       question: choice(
@@ -324,6 +362,7 @@ function buildState(state) {
       };
     })(),
     status: statusContext(state.screen[23] || ""),
+    goal_candidates: state.candidates,
     symbols: {
       "@": "player",
       ".": "room floor",
@@ -371,7 +410,13 @@ export default {
       return json({ error: error instanceof Error ? error.message : "invalid state" }, 400);
     }
 
-    const { question, keys } = buildQuestion(state);
+    let built;
+    try {
+      built = buildQuestion(state);
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : "invalid question" }, 400);
+    }
+    const { question, keys, targets } = built;
     const started = Date.now();
     let upstream;
     try {
@@ -406,7 +451,21 @@ export default {
 
     const answer = result?.answers?.command;
     const label = typeof answer?.choice === "string" ? answer.choice : "";
-    const key = keys[label];
+    if (state.phase === "goal") {
+      const target = targets?.[label];
+      if (!target) return json({ error: "Jev returned an unsupported goal", detail: result }, 502);
+      return json({
+        label,
+        target,
+        answer,
+        model: result.model,
+        usage: result.usage,
+        elapsed_ms: Date.now() - started,
+        phase: state.phase,
+      });
+    }
+
+    const key = keys?.[label];
     if (typeof key !== "string" || key.length !== 1) {
       return json({ error: "Jev returned an unsupported command", detail: result }, 502);
     }

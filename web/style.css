@@ -100,6 +100,25 @@ h2 { margin-top: 4px; font: 700 13px/1.25 ui-monospace, SFMono-Regular, Menlo, m
   pointer-events: none;
 }
 .message-overlay[hidden] { display: none; }
+.rip-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: #000;
+  pointer-events: none;
+}
+.rip-overlay[hidden] { display: none; }
+.rip-overlay pre {
+  margin: 0;
+  color: var(--terminal);
+  font: 15px/1.12 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre;
+  text-align: left;
+}
 .rogue-status {
   display: flex;
   flex-wrap: wrap;

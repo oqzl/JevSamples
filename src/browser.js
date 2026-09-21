@@ -11,6 +11,8 @@ const ui = {
   viewport: $("terminalViewport"),
   terminal: $("terminalScreen"),
   messageOverlay: $("messageOverlay"),
+  ripOverlay: $("ripOverlay"),
+  ripArt: $("ripArt"),
   rogueStatus: $("rogueStatus"),
   follow: $("followButton"),
   run: $("runButton"),
@@ -253,6 +255,211 @@ function renderStatus(statusLine) {
   }
 }
 
+
+const MOVE_KEYS = new Map([
+  ["-1,-1", "y"], ["-1,0", "k"], ["-1,1", "u"],
+  ["0,-1", "h"], ["0,1", "l"],
+  ["1,-1", "b"], ["1,0", "j"], ["1,1", "n"],
+]);
+
+const ITEM_SYMBOLS = new Map([
+  ["*", "gold"],
+  [")", "weapon"],
+  ["]", "armor"],
+  ["!", "potion"],
+  ["?", "scroll"],
+  ["=", "ring"],
+  ["/", "wand or staff"],
+  [":", "food"],
+  [",", "Amulet of Yendor"],
+]);
+
+function playerPosition(screen) {
+  for (let y = 1; y < ROWS - 1; y++) {
+    const x = screen[y]?.indexOf("@") ?? -1;
+    if (x >= 0) return { x, y };
+  }
+  return null;
+}
+
+function isWalkable(screen, x, y) {
+  if (x < 0 || x >= COLS || y <= 0 || y >= ROWS - 1) return false;
+  const ch = screen[y]?.[x] ?? " ";
+  return ch !== " " && ch !== "|" && ch !== "-";
+}
+
+function navigationNeighbors(screen, point) {
+  const result = [];
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      if (dx === 0 && dy === 0) continue;
+      const x = point.x + dx;
+      const y = point.y + dy;
+      if (!isWalkable(screen, x, y)) continue;
+      if (dx !== 0 && dy !== 0) {
+        if (!isWalkable(screen, point.x + dx, point.y) || !isWalkable(screen, point.x, point.y + dy)) continue;
+      }
+      result.push({ x, y });
+    }
+  }
+  return result;
+}
+
+function shortestPath(screen, start, goal) {
+  if (!start || !goal) return null;
+  const startKey = start.x + "," + start.y;
+  const goalKey = goal.x + "," + goal.y;
+  if (startKey === goalKey) return [start];
+
+  const queue = [start];
+  const previous = new Map([[startKey, null]]);
+  for (let index = 0; index < queue.length; index++) {
+    const current = queue[index];
+    for (const next of navigationNeighbors(screen, current)) {
+      const key = next.x + "," + next.y;
+      if (previous.has(key)) continue;
+      previous.set(key, current);
+      if (key === goalKey) {
+        const path = [next];
+        let cursor = current;
+        while (cursor) {
+          path.push(cursor);
+          cursor = previous.get(cursor.x + "," + cursor.y);
+        }
+        return path.reverse();
+      }
+      queue.push(next);
+    }
+  }
+  return null;
+}
+
+function distanceMap(screen, start) {
+  const distances = new Map();
+  if (!start) return distances;
+  const queue = [start];
+  distances.set(start.x + "," + start.y, 0);
+  for (let index = 0; index < queue.length; index++) {
+    const current = queue[index];
+    const currentDistance = distances.get(current.x + "," + current.y);
+    for (const next of navigationNeighbors(screen, current)) {
+      const key = next.x + "," + next.y;
+      if (distances.has(key)) continue;
+      distances.set(key, currentDistance + 1);
+      queue.push(next);
+    }
+  }
+  return distances;
+}
+
+function keyForStep(from, to) {
+  return MOVE_KEYS.get((to.y - from.y) + "," + (to.x - from.x)) || null;
+}
+
+function isMonster(ch) {
+  return /^[A-Z]$/.test(ch);
+}
+
+function isRipScreen(screen) {
+  const joined = screen.join("\n").toLowerCase();
+  return joined.includes("rest") && joined.includes("peace") && joined.includes("killed by");
+}
+
+function centeredRipText(screen) {
+  const lines = screen.slice(0, ROWS - 1);
+  const nonEmpty = lines
+    .map((line, y) => ({ y, line }))
+    .filter(({ line }) => line.trim().length > 0);
+  if (nonEmpty.length === 0) return "";
+  let minX = COLS;
+  let maxX = 0;
+  for (const { line } of nonEmpty) {
+    const first = line.search(/\S/);
+    const last = line.length - 1 - [...line].reverse().join("").search(/\S/);
+    if (first >= 0) minX = Math.min(minX, first);
+    if (last >= 0) maxX = Math.max(maxX, last);
+  }
+  return nonEmpty.map(({ line }) => line.slice(minX, maxX + 1).replace(/\s+$/, "")).join("\n");
+}
+
+function candidateDescription(type, ch, x, y, distance, extra = "") {
+  const label =
+    type === "item" ? (ITEM_SYMBOLS.get(ch) || "item") :
+    type === "door" ? "new door" :
+    type === "stairs" ? "staircase" :
+    type === "monster" ? "visible monster " + ch :
+    type === "frontier" ? "unexplored frontier" :
+    "unvisited reachable area";
+  return `${label} at (${x},${y}), ${distance} steps away${extra ? ". " + extra : ""}`;
+}
+
+function extractGoalCandidates(screen, visited) {
+  const player = playerPosition(screen);
+  if (!player) return [];
+  const distances = distanceMap(screen, player);
+  const buckets = { item: [], door: [], stairs: [], monster: [], frontier: [], explore: [] };
+
+  for (let y = 1; y < ROWS - 1; y++) {
+    for (let x = 0; x < COLS; x++) {
+      const key = x + "," + y;
+      const distance = distances.get(key);
+      if (!Number.isFinite(distance) || distance === 0) continue;
+      const ch = screen[y]?.[x] ?? " ";
+
+      if (ITEM_SYMBOLS.has(ch)) {
+        const extra = ch === "," ? "This is the mandatory Amulet." :
+          ch === ":" ? "Food directly supports survival." :
+          ch === "*" ? "Gold is optional compared with exploration and survival." :
+          "Potentially useful equipment or consumable.";
+        buckets.item.push({ id: `item_${x}_${y}`, type: "item", ch, x, y, distance, description: candidateDescription("item", ch, x, y, distance, extra) });
+        continue;
+      }
+      if (ch === "%") {
+        buckets.stairs.push({ id: `stairs_${x}_${y}`, type: "stairs", ch, x, y, distance, description: candidateDescription("stairs", ch, x, y, distance, "Use it to change dungeon level when appropriate.") });
+        continue;
+      }
+      if (ch === "+" && !visited.has(key)) {
+        buckets.door.push({ id: `door_${x}_${y}`, type: "door", ch, x, y, distance, description: candidateDescription("door", ch, x, y, distance, "A newly discovered door may lead to unexplored rooms or corridors.") });
+        continue;
+      }
+      if (isMonster(ch) && distance <= 3) {
+        buckets.monster.push({ id: `monster_${x}_${y}`, type: "monster", ch, x, y, distance, description: candidateDescription("monster", ch, x, y, distance, "Only prioritize if it blocks progress or is an immediate threat.") });
+        continue;
+      }
+
+      if (isWalkable(screen, x, y) && !visited.has(key)) {
+        let unknownNeighbor = false;
+        for (let dy = -1; dy <= 1 && !unknownNeighbor; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (Math.abs(dx) + Math.abs(dy) !== 1) continue;
+            const adjacent = screen[y + dy]?.[x + dx] ?? " ";
+            if (adjacent === " ") {
+              unknownNeighbor = true;
+              break;
+            }
+          }
+        }
+        if (unknownNeighbor && (ch === "#" || ch === "+" || ch === ".")) {
+          buckets.frontier.push({ id: `frontier_${x}_${y}`, type: "frontier", ch, x, y, distance, description: candidateDescription("frontier", ch, x, y, distance, "Reaching this edge can reveal more of the level.") });
+        } else if (ch === "." || ch === "#") {
+          buckets.explore.push({ id: `explore_${x}_${y}`, type: "explore", ch, x, y, distance, description: candidateDescription("explore", ch, x, y, distance) });
+        }
+      }
+    }
+  }
+
+  for (const values of Object.values(buckets)) values.sort((a, b) => a.distance - b.distance);
+  const selected = [
+    ...buckets.item.slice(0, 6),
+    ...buckets.door.slice(0, 4),
+    ...buckets.stairs.slice(0, 2),
+    ...buckets.monster.slice(0, 2),
+    ...buckets.frontier.slice(0, 4),
+  ];
+  if (selected.length < 4) selected.push(...buckets.explore.slice(0, 4 - selected.length));
+  return selected.slice(0, 18);
+}
+
 class JevController {
   constructor() {
     this.mode = "paused";
@@ -270,6 +477,8 @@ class JevController {
     this.pendingTurn = null;
     this.noEffectLabels = new Set();
     this.recentActions = [];
+    this.currentGoal = null;
+    this.visitedByLevel = new Map();
     this.screen = Array.from({ length: ROWS }, () => " ".repeat(COLS));
     this.updateModeUI();
   }
@@ -290,6 +499,15 @@ class JevController {
     ui.floor.textContent = status?.level || "—";
     renderStatus(screen[23] || "");
     ui.terminal.textContent = screen.slice(0, ROWS - 1).join("\n");
+
+    const rip = isRipScreen(screen);
+    ui.ripOverlay.hidden = !rip;
+    if (rip) {
+      ui.ripArt.textContent = centeredRipText(screen);
+      ui.messageOverlay.hidden = true;
+    } else if (this.lastMessage) {
+      ui.messageOverlay.hidden = false;
+    }
     if (this.following) requestAnimationFrame(() => this.centerPlayer());
   }
 
@@ -421,6 +639,7 @@ class JevController {
     while (true) {
       await this.waitUntilAllowed(phase);
       try {
+        if (phase === "turn") return await this.nextTurnKey(screen);
         return await this.askJev(screen, phase);
       } catch (error) {
         if (error?.name === "AbortError") {
@@ -434,6 +653,114 @@ class JevController {
         await this.waitUntilAllowed(phase);
       }
     }
+  }
+
+  visitedSet(screen) {
+    const status = parseStatus(screen[23] || "");
+    const level = status?.level || "unknown";
+    if (!this.visitedByLevel.has(level)) this.visitedByLevel.set(level, new Set());
+    return this.visitedByLevel.get(level);
+  }
+
+  rememberCurrentPosition(screen) {
+    const player = playerPosition(screen);
+    if (player) this.visitedSet(screen).add(player.x + "," + player.y);
+  }
+
+  goalStillValid(screen, goal) {
+    const player = playerPosition(screen);
+    if (!player || !goal) return false;
+    if (player.x === goal.x && player.y === goal.y) return true;
+    const ch = screen[goal.y]?.[goal.x] ?? " ";
+    if (goal.type === "item") return ch === goal.ch;
+    if (goal.type === "stairs") return ch === "%";
+    if (goal.type === "door") return ch === "+";
+    if (goal.type === "monster") return ch === goal.ch;
+    return isWalkable(screen, goal.x, goal.y);
+  }
+
+  hasAmulet() {
+    return Object.values(this.inventory).some((description) => /amulet/i.test(description)) ||
+      this.recentMessages.some((message) => /amulet/i.test(message));
+  }
+
+  async askGoal(screen, candidates) {
+    this.currentAbort = new AbortController();
+    ui.apiStatus.textContent = "GOAL…";
+    ui.apiStatus.classList.remove("error");
+
+    const response = await fetch("/api/decision", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        phase: "goal",
+        screen,
+        inventory: this.inventory,
+        recentMessages: this.recentMessages,
+        recentActions: this.recentActions,
+        candidates,
+      }),
+      signal: this.currentAbort.signal,
+    });
+    const data = await response.json().catch(() => ({ error: "Invalid server response" }));
+    this.currentAbort = null;
+    if (!response.ok) throw new Error(data.error || "Jev goal request failed");
+
+    this.inputCount += 1;
+    ui.inputCount.textContent = String(this.inputCount);
+    ui.apiStatus.textContent = "ROUTE";
+    this.renderDecision(data);
+    this.recentActions.push("goal:" + data.target.type + "@" + data.target.x + "," + data.target.y);
+    this.recentActions = this.recentActions.slice(-16);
+    return data.target;
+  }
+
+  async nextTurnKey(screen) {
+    this.rememberCurrentPosition(screen);
+    const player = playerPosition(screen);
+    if (!player) return ".".charCodeAt(0);
+
+    if (this.currentGoal && player.x === this.currentGoal.x && player.y === this.currentGoal.y) {
+      const reached = this.currentGoal;
+      this.currentGoal = null;
+      if (reached.type === "stairs") {
+        ui.apiStatus.textContent = this.hasAmulet() ? "ASCEND" : "DESCEND";
+        return (this.hasAmulet() ? "<" : ">").charCodeAt(0);
+      }
+    }
+
+    if (this.currentGoal && this.goalStillValid(screen, this.currentGoal)) {
+      const path = shortestPath(screen, player, this.currentGoal);
+      if (path && path.length > 1) {
+        const key = keyForStep(path[0], path[1]);
+        if (key) {
+          ui.apiStatus.textContent = "ROUTE";
+          return key.charCodeAt(0);
+        }
+      }
+    }
+
+    this.currentGoal = null;
+    const candidates = extractGoalCandidates(screen, this.visitedSet(screen));
+    if (candidates.length === 0) {
+      ui.apiStatus.textContent = "SEARCH";
+      return "s".charCodeAt(0);
+    }
+
+    this.currentGoal = await this.askGoal(screen, candidates);
+    const path = shortestPath(screen, player, this.currentGoal);
+    if (path && path.length > 1) {
+      const key = keyForStep(path[0], path[1]);
+      if (key) return key.charCodeAt(0);
+    }
+    if (this.currentGoal.type === "stairs") {
+      const reached = this.currentGoal;
+      this.currentGoal = null;
+      return (this.hasAmulet() ? "<" : ">").charCodeAt(0);
+    }
+
+    this.currentGoal = null;
+    return "s".charCodeAt(0);
   }
 
   async askJev(screen, phase) {
@@ -462,17 +789,14 @@ class JevController {
     ui.inputCount.textContent = String(this.inputCount);
     ui.apiStatus.textContent = "READY";
     this.renderDecision(data);
-    if (phase === "turn") {
-      this.pendingTurn = { label: data.label, fingerprint: screen.join("\n") };
-      this.recentActions.push(data.label);
-      this.recentActions = this.recentActions.slice(-16);
-    }
     return data.key;
   }
 
   renderDecision(data) {
     const answer = data.answer || {};
-    ui.lastAction.textContent = String(data.label || "—").replaceAll("_", " ").toUpperCase();
+    ui.lastAction.textContent = data.target
+      ? (`TARGET ${data.target.type.toUpperCase()} · ${data.target.description}`)
+      : String(data.label || "—").replaceAll("_", " ").toUpperCase();
     ui.lastConfidence.textContent = Number.isFinite(answer.confidence) ? answer.confidence.toFixed(2) : "—";
     ui.lastLatency.textContent = Number.isFinite(data.elapsed_ms) ? data.elapsed_ms + " ms" : "—";
     ui.lastTokens.textContent = Number.isFinite(data.usage?.input_tokens) ? String(data.usage.input_tokens) : "—";
