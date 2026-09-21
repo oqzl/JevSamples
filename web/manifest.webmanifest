@@ -1,13 +1,13 @@
 {
   "id": "./",
-  "name": "Jev World",
-  "short_name": "Jev World",
-  "description": "A five-second agent simulation powered by TypeSafe Jev typed probabilistic decisions.",
+  "name": "Jev Rogue",
+  "short_name": "Jev Rogue",
+  "description": "Watch TypeSafe Jev autonomously play Rogue 5.4.4.",
   "start_url": "./?v=__COMMIT_SHA__",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#0b0d10",
-  "theme_color": "#0b0d10",
+  "background_color": "#050806",
+  "theme_color": "#050806",
   "icons": [
     {
       "src": "./icon.svg?v=__COMMIT_SHA__",

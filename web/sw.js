@@ -1,5 +1,5 @@
 const REV = "__COMMIT_SHA__";
-const CACHE = "jev-world-" + REV;
+const CACHE = "jev-rogue-" + REV;
 const SHELL = [
   "./",
   "./index.html",
@@ -16,7 +16,7 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((key) => key.startsWith("jev-world-") && key !== CACHE).map((key) => caches.delete(key))))
+      .then((keys) => Promise.all(keys.filter((key) => key.startsWith("jev-rogue-") && key !== CACHE).map((key) => caches.delete(key))))
       .then(() => self.clients.claim())
   );
 });

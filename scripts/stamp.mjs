@@ -8,42 +8,24 @@ function revision() {
     process.env.GITHUB_SHA;
   if (fromEnv) return fromEnv.slice(0, 12);
   try {
-    return execFileSync("git", ["rev-parse", "--short=12", "HEAD"], {
-      encoding: "utf8",
-    }).trim();
+    return execFileSync("git", ["rev-parse", "--short=12", "HEAD"], { encoding: "utf8" }).trim();
   } catch {
     return "dev";
   }
 }
 
 function stampQueryVersions(source, sha) {
-  return source.replace(
-    /\?v=(?:__COMMIT_SHA__|dev|[0-9a-f]{7,40})/gi,
-    "?v=" + sha,
-  );
+  return source.replace(/\?v=(?:__COMMIT_SHA__|dev|[0-9a-f]{7,40})/gi, "?v=" + sha);
 }
 
 const sha = revision();
-
-const indexPath = "web/index.html";
-writeFileSync(indexPath, stampQueryVersions(readFileSync(indexPath, "utf8"), sha));
-
-const manifestPath = "web/manifest.webmanifest";
-writeFileSync(
-  manifestPath,
-  stampQueryVersions(readFileSync(manifestPath, "utf8"), sha),
-);
+for (const path of ["web/index.html", "web/manifest.webmanifest"]) {
+  writeFileSync(path, stampQueryVersions(readFileSync(path, "utf8"), sha));
+}
 
 const swPath = "web/sw.js";
 const sw = readFileSync(swPath, "utf8")
-  .replace(
-    /const REV = "(?:__COMMIT_SHA__|dev|[0-9a-f]{7,40})";/,
-    'const REV = "' + sha + '";',
-  )
-  .replace(
-    /\?v=(?:__COMMIT_SHA__|dev|[0-9a-f]{7,40})/gi,
-    "?v=" + sha,
-  );
+  .replace(/const REV = "(?:__COMMIT_SHA__|dev|[0-9a-f]{7,40})";/, 'const REV = "' + sha + '";')
+  .replace(/\?v=(?:__COMMIT_SHA__|dev|[0-9a-f]{7,40})/gi, "?v=" + sha);
 writeFileSync(swPath, sw);
-
 console.log("Stamped deployment revision " + sha);

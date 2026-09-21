@@ -3,8 +3,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node scripts/stamp.mjs",
+    "build": "esbuild src/browser.js --bundle --format=esm --platform=browser --target=es2022 --outfile=web/app.js && node scripts/stamp.mjs",
     "dev": "npx wrangler dev",
     "deploy": "npx wrangler deploy"
+  },
+  "dependencies": {
+    "@ticktockbent/rogue-ts": "0.1.2"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
   }
 }

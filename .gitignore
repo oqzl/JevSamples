@@ -1,3 +1,6 @@
+node_modules/
+web/app.js
+
 # Local datasets / derived indexes
 data/
 *.sqlite3

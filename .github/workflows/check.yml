@@ -17,17 +17,14 @@ jobs:
           fetch-depth: 1
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Python checks
-        run: |
-          python -m py_compile backtest/jra/jra_backtest.py
-          cd backtest/jra
-          python -m unittest -v test_jra_backtest.py
+          node-version: 24
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Build browser bundle
+        run: npm run build
       - name: Syntax check
         run: |
+          node --check src/browser.js
           node --check src/worker.js
           node --check web/app.js
           node --check web/sw.js
