@@ -58,7 +58,7 @@ h2 { margin-top: 4px; font: 700 13px/1.25 ui-monospace, SFMono-Regular, Menlo, m
 }
 .terminal-viewport {
   width: 100%;
-  aspect-ratio: 1 / 1;
+  aspect-ratio: 4 / 3;
   overflow: auto;
   border: 1px solid var(--line-strong);
   border-radius: 6px;
