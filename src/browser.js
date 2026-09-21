@@ -481,6 +481,56 @@ function visibleMonsterCount(screen, radius = 3) {
   return count;
 }
 
+function equipmentNeedsReview(inventory) {
+  const descriptions = Object.values(inventory);
+  const hasUnequippedWeapon = descriptions.some((description) =>
+    /(mace|sword|bow|dagger|spear|weapon)/i.test(description) &&
+    !/\(weapon in hand\)/i.test(description)
+  );
+  const hasUnequippedArmor = descriptions.some((description) =>
+    /(armor|mail|leather|plate|splint|scale|chain)/i.test(description) &&
+    !/\(being worn\)/i.test(description)
+  );
+  const wornRings = descriptions.filter((description) => /\(on (?:left|right) hand\)/i.test(description)).length;
+  const hasUnequippedRing = wornRings < 2 && descriptions.some((description) =>
+    /ring/i.test(description) && !/\(on (?:left|right) hand\)/i.test(description)
+  );
+  return hasUnequippedWeapon || hasUnequippedArmor || hasUnequippedRing;
+}
+
+function inventorySignature(inventory) {
+  return JSON.stringify(Object.entries(inventory).sort(([a], [b]) => a.localeCompare(b)));
+}
+
+function decisionContextFingerprint(screen, inventory) {
+  const status = parseStatus(screen[23] || "");
+  const specials = [];
+  const monsterTypes = {};
+  for (let y = 1; y < ROWS - 1; y++) {
+    for (let x = 0; x < COLS; x++) {
+      const ch = screen[y]?.[x] ?? " ";
+      if (ITEM_SYMBOLS.has(ch) || ch === "%" || ch === "+" || ch === "^") {
+        specials.push(ch + "@" + x + "," + y);
+      } else if (isMonster(ch)) {
+        monsterTypes[ch] = (monsterTypes[ch] || 0) + 1;
+      }
+    }
+  }
+  return JSON.stringify({
+    level: status?.level,
+    hp: status?.hp,
+    maxHp: status?.maxHp,
+    str: status?.str,
+    maxStr: status?.maxStr,
+    hunger: status?.hunger,
+    adjacentMonsters: visibleMonsterCount(screen, 1),
+    nearbyMonsters: visibleMonsterCount(screen, 3),
+    monsterTypes,
+    specials,
+    inventory: inventorySignature(inventory),
+  });
+}
+
 function tacticalTrigger(screen, inventory) {
   const status = parseStatus(screen[23] || "");
   if (!status) return false;
@@ -490,12 +540,14 @@ function tacticalTrigger(screen, inventory) {
   const str = Number(status.str);
   const maxStr = Number(status.maxStr);
   const monsters = visibleMonsterCount(screen, 3);
+  const adjacent = visibleMonsterCount(screen, 1);
 
   if (/hungry|weak|faint/i.test(status.hunger || "") && inventoryHas(inventory, /food|ration|fruit|slime mold/i)) return true;
   if (hpRatio < 0.75 && inventoryHas(inventory, /potion/i)) return true;
   if (hpRatio < 0.55 && monsters === 0) return true;
   if (str < maxStr && inventoryHas(inventory, /(restore strength|gain strength|potion)/i)) return true;
-  if (monsters > 0 && inventoryHas(inventory, /(wand|staff|scroll|potion)/i)) return true;
+  if (monsters > 0 && inventoryHas(inventory, /(wand|staff|scroll|potion|arrow|dagger|dart|shuriken|spear)/i)) return true;
+  if (adjacent > 0) return true;
   return false;
 }
 
@@ -520,6 +572,9 @@ class JevController {
     this.currentGoal = null;
     this.visitedByLevel = new Map();
     this.lastTacticalFingerprint = "";
+    this.lastDecisionContext = "";
+    this.lastEquipmentReviewSignature = "";
+    this.lastPlayerPosition = null;
     this.screen = Array.from({ length: ROWS }, () => " ".repeat(COLS));
     this.updateModeUI();
     this.renderInventory();
@@ -869,19 +924,34 @@ class JevController {
     const player = playerPosition(screen);
     if (!player) return ".".charCodeAt(0);
 
+    const context = decisionContextFingerprint(screen, this.inventory);
+    const teleported = this.lastPlayerPosition &&
+      Math.max(Math.abs(player.x - this.lastPlayerPosition.x), Math.abs(player.y - this.lastPlayerPosition.y)) > 1;
+    if ((this.lastDecisionContext && context !== this.lastDecisionContext) || teleported) {
+      this.currentGoal = null;
+      this.lastTacticalFingerprint = "";
+    }
+    this.lastDecisionContext = context;
+    this.lastPlayerPosition = { x: player.x, y: player.y };
+
+    const equipmentSig = inventorySignature(this.inventory);
+    const equipmentReview = equipmentNeedsReview(this.inventory) &&
+      equipmentSig !== this.lastEquipmentReviewSignature;
     const tacticFingerprint = this.tacticalFingerprint(screen);
-    if (tacticalTrigger(screen, this.inventory) && tacticFingerprint !== this.lastTacticalFingerprint) {
+    const needsTactic = tacticalTrigger(screen, this.inventory) || equipmentReview;
+    if (needsTactic && tacticFingerprint !== this.lastTacticalFingerprint) {
       this.lastTacticalFingerprint = tacticFingerprint;
+      if (equipmentReview) this.lastEquipmentReviewSignature = equipmentSig;
       const tactic = await this.askTactic(screen);
       if (Number.isFinite(tactic.key)) {
-        if (new Set(["eat", "quaff", "read_scroll", "wield", "wear_armor", "take_off_armor", "put_on_ring", "remove_ring", "zap", "drop"]).has(tactic.label)) {
+        if (new Set(["eat", "quaff", "read_scroll", "wield", "wear_armor", "take_off_armor", "put_on_ring", "remove_ring", "zap", "throw", "drop"]).has(tactic.label)) {
           this.inventoryRefreshPending = true;
         }
         ui.apiStatus.textContent = "TACTIC";
         return tactic.key;
       }
       ui.apiStatus.textContent = "ROUTE";
-    } else if (!tacticalTrigger(screen, this.inventory)) {
+    } else if (!needsTactic) {
       this.lastTacticalFingerprint = "";
     }
 

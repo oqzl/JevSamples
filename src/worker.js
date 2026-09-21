@@ -298,9 +298,16 @@ function tacticQuestion(state) {
   const healing = inventoryMatches(state.inventory, /(healing|extra healing)/i);
   const restore = inventoryMatches(state.inventory, /(restore strength|gain strength)/i);
   const scrolls = inventoryMatches(state.inventory, /scroll/i);
-  const weapons = inventoryMatches(state.inventory, /(mace|sword|bow|arrow|dagger|dart|shuriken|spear|weapon)/i);
-  const armor = inventoryMatches(state.inventory, /(armor|mail|leather|plate|splint|scale|chain)/i);
-  const rings = inventoryMatches(state.inventory, /ring/i);
+  const allWeapons = inventoryMatches(state.inventory, /(mace|sword|bow|dagger|spear|weapon)/i);
+  const weapons = allWeapons.filter((item) => !/\(weapon in hand\)/i.test(item.description));
+  const currentWeapon = allWeapons.find((item) => /\(weapon in hand\)/i.test(item.description));
+  const missiles = inventoryMatches(state.inventory, /(arrow|dagger|dart|shuriken|spear)/i);
+  const allArmor = inventoryMatches(state.inventory, /(armor|mail|leather|plate|splint|scale|chain)/i);
+  const armor = allArmor.filter((item) => !/\(being worn\)/i.test(item.description));
+  const currentArmor = allArmor.find((item) => /\(being worn\)/i.test(item.description));
+  const allRings = inventoryMatches(state.inventory, /ring/i);
+  const wornRings = allRings.filter((item) => /\(on (?:left|right) hand\)/i.test(item.description));
+  const rings = allRings.filter((item) => !/\(on (?:left|right) hand\)/i.test(item.description));
   const sticks = inventoryMatches(state.inventory, /(wand|staff)/i);
 
   const criteria = {
@@ -340,18 +347,43 @@ function tacticQuestion(state) {
   }
 
   if (weapons.length > 0) {
-    criteria.wield = "Consider switching weapons only if a carried weapon is plausibly better than the current one. Weapons: " + weapons.map((x) => x.description).join("; ");
+    criteria.wield = "Consider equipping an unequipped weapon if it is plausibly better than the current weapon. Current: " +
+      (currentWeapon?.description || "none") + ". Candidates: " + weapons.map((x) => x.description).join("; ");
     keys.wield = "w";
   }
 
-  if (armor.length > 0) {
-    criteria.wear_armor = "Consider wearing carried armor if not already armored and it is likely useful. Armor: " + armor.map((x) => x.description).join("; ");
+  if (armor.length > 0 && !currentArmor) {
+    criteria.wear_armor = "No armor is currently worn. Consider equipping useful armor. Candidates: " +
+      armor.map((x) => x.description).join("; ");
     keys.wear_armor = "W";
+  } else if (armor.length > 0 && currentArmor) {
+    criteria.take_off_armor = "A different armor is available, but Rogue requires removing current armor before changing it. Remove current armor only if a carried candidate is plausibly better. Current: " +
+      currentArmor.description + ". Candidates: " + armor.map((x) => x.description).join("; ");
+    keys.take_off_armor = "T";
   }
 
-  if (rings.length > 0) {
-    criteria.put_on_ring = "Consider wearing a known beneficial ring when a hand is available; avoid unidentified or harmful rings without a reason. Rings: " + rings.map((x) => x.description).join("; ");
+  if (rings.length > 0 && wornRings.length < 2) {
+    criteria.put_on_ring = "A hand is free. Consider equipping a known beneficial unequipped ring; avoid unidentified or harmful rings without a reason. Candidates: " +
+      rings.map((x) => x.description).join("; ");
     keys.put_on_ring = "P";
+  }
+
+  const harmfulWornRing = wornRings.some((item) => /(aggravate|teleportation)/i.test(item.description));
+  if (wornRings.length > 0 && (harmfulWornRing || (rings.length > 0 && wornRings.length >= 2))) {
+    criteria.remove_ring = "Consider removing a worn ring if it is known harmful, or to free a hand for a clearly better carried ring. Worn: " +
+      wornRings.map((x) => x.description).join("; ") + (rings.length ? ". Carried: " + rings.map((x) => x.description).join("; ") : "");
+    keys.remove_ring = "R";
+  }
+
+  if (monsters > 0 && missiles.length > 0) {
+    criteria.throw = "A monster is nearby and throwable weapons are carried. Consider a ranged throw when it reduces melee risk or exploits a suitable missile. Missiles: " +
+      missiles.map((x) => x.description).join("; ");
+    keys.throw = "t";
+  }
+
+  if (Object.keys(state.inventory).length >= 22) {
+    criteria.drop = "The pack is nearly full (Rogue maximum is 23 slots). Drop a clearly low-value or redundant item if freeing capacity is more valuable than keeping everything.";
+    keys.drop = "d";
   }
 
   if (hpRatio < 0.55 && monsters === 0) {
@@ -365,7 +397,8 @@ function tacticQuestion(state) {
         role: "You are making a short-horizon tactical decision for an autonomous Rogue 5.4.4 player before navigation continues.",
         objective: "Stay alive while preserving scarce consumables for when their expected value is high.",
         health_policy: "The value of healing rises sharply as HP falls. At <=30% HP, known healing is normally urgent; at 30-50%, it is strongly favored under threat; at 50-75%, it is situational; when healthy, conserve healing.",
-        resource_policy: "Eat when hunger is active. Prefer identified beneficial items over unknown ones. Do not burn scrolls, potions, rings, or charges merely because they exist.",
+        resource_policy: "Eat when hunger is active. Prefer identified beneficial items over unknown ones. Equip better weapons and armor when discovered. Replace harmful or inferior equipment when justified. Do not burn scrolls, potions, rings, charges, or missiles merely because they exist.",
+        replanning_policy: "The controller invokes this decision again when meaningful state changes: health/strength/hunger, nearby threats, visible items/doors/stairs/traps, inventory/equipment, dungeon level, or teleportation.",
         navigation_policy: "Choose continue_route when no tactical action has enough value to interrupt the current persistent goal.",
         question: "Should the player interrupt navigation for one tactical action now?",
       },
