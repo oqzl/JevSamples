@@ -35,6 +35,7 @@ button:focus-visible, .terminal-viewport:focus-visible { outline: 2px solid var(
 .eyebrow { font: 9px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .14em; color: var(--muted); }
 h1, h2 { margin: 0; }
 h1 { margin-top: 3px; font: 700 19px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em; }
+.build-meta { margin-top: 4px; color: #607065; font: 8px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .04em; }
 h2 { margin-top: 4px; font: 700 13px/1.25 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .top-status { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px 10px; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); }
 .top-status b, #apiStatus { color: var(--accent); }
