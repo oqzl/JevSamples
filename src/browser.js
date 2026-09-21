@@ -10,6 +10,8 @@ const $ = (id) => document.getElementById(id);
 const ui = {
   viewport: $("terminalViewport"),
   terminal: $("terminalScreen"),
+  messageOverlay: $("messageOverlay"),
+  rogueStatus: $("rogueStatus"),
   follow: $("followButton"),
   run: $("runButton"),
   fast: $("fastButton"),
@@ -208,9 +210,47 @@ function detectPhase(screen) {
   return "turn";
 }
 
-function parseFloor(statusLine) {
-  const match = statusLine.match(/Level:\s*(\d+)/i);
-  return match ? match[1] : "—";
+function parseStatus(statusLine) {
+  const match = statusLine.match(/Level:\s*(\d+).*?Gold:\s*(\d+).*?Hp:\s*(\d+)\((\d+)\).*?Str:\s*(\d+)\((\d+)\).*?Arm:\s*(\d+).*?Exp:\s*(\d+)\/(\d+)\s*(.*)$/i);
+  if (!match) return null;
+  return {
+    level: match[1],
+    gold: match[2],
+    hp: match[3],
+    maxHp: match[4],
+    str: match[5],
+    maxStr: match[6],
+    arm: match[7],
+    expLevel: match[8],
+    exp: match[9],
+    hunger: match[10].trim(),
+  };
+}
+
+function renderStatus(statusLine) {
+  const status = parseStatus(statusLine);
+  ui.rogueStatus.replaceChildren();
+  if (!status) {
+    ui.rogueStatus.textContent = statusLine.trim() || "STATUS —";
+    return;
+  }
+  const values = [
+    ["HP", status.hp + "/" + status.maxHp],
+    ["STR", status.str + "/" + status.maxStr],
+    ["ARM", status.arm],
+    ["EXP", status.expLevel + "/" + status.exp],
+    ["GOLD", status.gold],
+  ];
+  if (status.hunger) values.push(["FOOD", status.hunger.toUpperCase()]);
+  for (const [label, value] of values) {
+    const item = document.createElement("span");
+    const key = document.createElement("i");
+    const val = document.createElement("b");
+    key.textContent = label;
+    val.textContent = value;
+    item.append(key, val);
+    ui.rogueStatus.appendChild(item);
+  }
 }
 
 class JevController {
@@ -227,6 +267,9 @@ class JevController {
     this.currentAbort = null;
     this.bootstrapInventory = true;
     this.bootstrapInProgress = false;
+    this.pendingTurn = null;
+    this.noEffectLabels = new Set();
+    this.recentActions = [];
     this.screen = Array.from({ length: ROWS }, () => " ".repeat(COLS));
     this.updateModeUI();
   }
@@ -236,13 +279,17 @@ class JevController {
     const message = (screen[0] || "").trim();
     if (message && message !== this.lastMessage && !message.endsWith("--More--")) {
       this.lastMessage = message;
+      ui.messageOverlay.textContent = message;
+      ui.messageOverlay.hidden = false;
       this.recentMessages.push(message);
       this.recentMessages = this.recentMessages.slice(-16);
       this.learnInventory(message);
       this.renderMessages();
     }
-    ui.floor.textContent = parseFloor(screen[23] || "");
-    ui.terminal.textContent = screen.join("\n");
+    const status = parseStatus(screen[23] || "");
+    ui.floor.textContent = status?.level || "—";
+    renderStatus(screen[23] || "");
+    ui.terminal.textContent = screen.slice(0, ROWS - 1).join("\n");
     if (this.following) requestAnimationFrame(() => this.centerPlayer());
   }
 
@@ -271,7 +318,7 @@ class JevController {
     if (y < 0) return;
     const x = this.screen[y].indexOf("@");
     const cellWidth = ui.terminal.scrollWidth / COLS;
-    const cellHeight = ui.terminal.scrollHeight / ROWS;
+    const cellHeight = ui.terminal.scrollHeight / (ROWS - 1);
     const left = x * cellWidth - ui.viewport.clientWidth / 2 + cellWidth / 2;
     const top = y * cellHeight - ui.viewport.clientHeight / 2 + cellHeight / 2;
     ui.viewport.scrollTo({ left: Math.max(0, left), top: Math.max(0, top), behavior: "auto" });
@@ -340,6 +387,16 @@ class JevController {
   async getch(screen) {
     let phase = detectPhase(screen);
 
+    if (phase === "turn" && this.pendingTurn) {
+      const fingerprint = screen.join("\n");
+      if (fingerprint === this.pendingTurn.fingerprint) {
+        this.noEffectLabels.add(this.pendingTurn.label);
+      } else {
+        this.noEffectLabels.clear();
+      }
+      this.pendingTurn = null;
+    }
+
     if (phase === "more" || phase === "continue") {
       ui.apiStatus.textContent = phase === "continue" ? "CONTINUE" : "MORE";
       await sleep(70);
@@ -392,6 +449,8 @@ class JevController {
         screen,
         inventory: this.inventory,
         recentMessages: this.recentMessages,
+        recentActions: this.recentActions,
+        avoidLabels: phase === "turn" ? [...this.noEffectLabels] : [],
       }),
       signal: this.currentAbort.signal,
     });
@@ -403,6 +462,11 @@ class JevController {
     ui.inputCount.textContent = String(this.inputCount);
     ui.apiStatus.textContent = "READY";
     this.renderDecision(data);
+    if (phase === "turn") {
+      this.pendingTurn = { label: data.label, fingerprint: screen.join("\n") };
+      this.recentActions.push(data.label);
+      this.recentActions = this.recentActions.slice(-16);
+    }
     return data.key;
   }
 

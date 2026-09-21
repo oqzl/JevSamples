@@ -35,7 +35,15 @@ function sanitizeInput(input) {
     ? input.recentMessages.slice(-16).map((message) => cleanText(message, 160))
     : [];
 
-  return { phase, screen, inventory, recentMessages };
+  const recentActions = Array.isArray(input.recentActions)
+    ? input.recentActions.slice(-16).map((action) => cleanText(action, 40))
+    : [];
+
+  const avoidLabels = Array.isArray(input.avoidLabels)
+    ? input.avoidLabels.filter((label) => typeof label === "string").slice(-16)
+    : [];
+
+  return { phase, screen, inventory, recentMessages, recentActions, avoidLabels };
 }
 
 function choice(instructions, criteria) {
@@ -118,6 +126,119 @@ const TURN_KEYS = {
 delete TURN_CRITERIA.cancel;
 delete TURN_KEYS.cancel;
 
+const TURN_DIRECTIONS = {
+  north: [-1, 0],
+  south: [1, 0],
+  west: [0, -1],
+  east: [0, 1],
+  north_west: [-1, -1],
+  north_east: [-1, 1],
+  south_west: [1, -1],
+  south_east: [1, 1],
+};
+
+function findPlayer(screen) {
+  for (let y = 1; y < screen.length - 1; y++) {
+    const x = screen[y].indexOf("@");
+    if (x >= 0) return { y, x };
+  }
+  return null;
+}
+
+function visiblyBlocked(ch) {
+  return ch === " " || ch === "|" || ch === "-";
+}
+
+function movementContext(screen) {
+  const player = findPlayer(screen);
+  const legalMoves = new Set(Object.keys(TURN_DIRECTIONS));
+  const visibleStairs = [];
+
+  for (let y = 1; y < screen.length - 1; y++) {
+    for (let x = 0; x < screen[y].length; x++) {
+      if (screen[y][x] === "%") visibleStairs.push({ y, x });
+    }
+  }
+
+  if (!player) return { player, legalMoves, visibleStairs };
+
+  legalMoves.clear();
+  for (const [label, [dy, dx]] of Object.entries(TURN_DIRECTIONS)) {
+    const target = screen[player.y + dy]?.[player.x + dx] ?? " ";
+    if (visiblyBlocked(target)) continue;
+
+    if (dy !== 0 && dx !== 0) {
+      const vertical = screen[player.y + dy]?.[player.x] ?? " ";
+      const horizontal = screen[player.y]?.[player.x + dx] ?? " ";
+      if (visiblyBlocked(vertical) || visiblyBlocked(horizontal)) continue;
+    }
+    legalMoves.add(label);
+  }
+  return { player, legalMoves, visibleStairs };
+}
+
+function statusContext(line) {
+  const match = line.match(/Level:\s*(\d+).*?Gold:\s*(\d+).*?Hp:\s*(\d+)\((\d+)\).*?Str:\s*(\d+)\((\d+)\).*?Arm:\s*(\d+).*?Exp:\s*(\d+)\/(\d+)\s*(.*)$/i);
+  if (!match) return { raw: line.trim() };
+  return {
+    level: Number(match[1]),
+    gold: Number(match[2]),
+    hp: Number(match[3]),
+    max_hp: Number(match[4]),
+    strength: Number(match[5]),
+    max_strength: Number(match[6]),
+    armor: Number(match[7]),
+    experience_level: Number(match[8]),
+    experience_points: Number(match[9]),
+    hunger: match[10].trim() || "normal",
+  };
+}
+
+function hasInventoryType(inventory, pattern) {
+  return Object.values(inventory).some((description) => pattern.test(description));
+}
+
+function turnQuestion(state) {
+  const movement = movementContext(state.screen);
+  const status = statusContext(state.screen[23] || "");
+  const avoid = new Set(state.avoidLabels);
+  const criteria = {};
+  const keys = {};
+
+  for (const [label, description] of Object.entries(TURN_CRITERIA)) {
+    if (label in TURN_DIRECTIONS && !movement.legalMoves.has(label)) continue;
+    if (avoid.has(label)) continue;
+
+    if (label === "inventory" || label === "pickup") continue;
+    if (label === "rest" && !(Number.isFinite(status.hp) && Number.isFinite(status.max_hp) && status.hp < status.max_hp * 0.45)) continue;
+    if (label === "search" && movement.legalMoves.size >= 2) continue;
+    if (label === "eat" && !/hungry|weak|faint/i.test(status.hunger || "")) continue;
+    if (label === "wield" && !hasInventoryType(state.inventory, /mace|sword|bow|arrow|dagger|dart|shuriken|spear|weapon/i)) continue;
+    if (label === "wear_armor" && !hasInventoryType(state.inventory, /armor|mail|leather|plate|splint|scale|chain|ring mail/i)) continue;
+    if (label === "put_on_ring" && !hasInventoryType(state.inventory, /ring/i)) continue;
+    if (label === "zap" && !hasInventoryType(state.inventory, /wand|staff/i)) continue;
+    if (label === "quaff" && !hasInventoryType(state.inventory, /potion/i)) continue;
+    if (label === "read_scroll" && !hasInventoryType(state.inventory, /scroll/i)) continue;
+    if (label === "throw" && !hasInventoryType(state.inventory, /arrow|dagger|dart|shuriken|spear/i)) continue;
+    if (label === "drop" || label === "take_off_armor" || label === "remove_ring") continue;
+
+    criteria[label] = description;
+    keys[label] = TURN_KEYS[label];
+  }
+
+  if (Object.keys(criteria).length < 2) {
+    for (const label of movement.legalMoves) {
+      if (avoid.has(label)) continue;
+      criteria[label] = TURN_CRITERIA[label];
+      keys[label] = TURN_KEYS[label];
+    }
+    criteria.search = TURN_CRITERIA.search;
+    keys.search = TURN_KEYS.search;
+  }
+
+  return { criteria, keys, movement, status };
+}
+
 function itemQuestion(state) {
   const criteria = {};
   const keys = {};
@@ -167,16 +288,20 @@ function buildQuestion(state) {
     };
   }
 
+  const { criteria, keys } = turnQuestion(state);
   return {
     question: choice(
       {
-        task: "Play Rogue 5.4.4 as an autonomous dungeon explorer.",
-        objective: "Survive, descend to level 26 or deeper, obtain the Amulet of Yendor, then return to the surface. Explore when the route is unknown, fight when necessary, conserve food and useful items, and do not assume unseen information.",
-        question: "Choose exactly one legal next command from the listed actions.",
+        role: "You are the sole player of Rogue 5.4.4. No human will rescue or steer you.",
+        objective: "WIN THE GAME: explore each level efficiently, find the staircase, descend toward level 26, obtain the Amulet of Yendor, then reverse direction and climb back to the surface alive.",
+        default_policy: "Make progress. On an ordinary safe turn, movement/exploration is the default. Prefer unexplored exits, doors, corridors, visible items, and routes toward a visible staircase. Do not loiter, repeatedly rest, repeatedly inspect inventory, or bounce between the same cells.",
+        tactical_policy: "Fight monsters blocking progress. Use food when hungry. Use consumables or equipment when there is a concrete tactical reason. Search only when visible exploration routes are exhausted or a hidden door is plausible. Rest only when significantly injured and currently safe.",
+        stairs_policy: "Before obtaining the Amulet, descend whenever you reach the downstairs staircase. After obtaining it, prioritize ascending toward the surface.",
+        question: "Choose the single next command that most directly advances the win condition from the currently offered legal actions.",
       },
-      TURN_CRITERIA,
+      criteria,
     ),
-    keys: TURN_KEYS,
+    keys,
   };
 }
 
@@ -187,7 +312,18 @@ function buildState(state) {
     current_message: state.screen[0].trim(),
     status_line: state.screen[23].trim(),
     recent_messages: state.recentMessages,
+    recent_actions: state.recentActions,
     known_inventory: state.inventory,
+    excluded_no_effect_actions: state.avoidLabels,
+    movement_context: (() => {
+      const info = movementContext(state.screen);
+      return {
+        player: info.player,
+        legal_directions: [...info.legalMoves],
+        visible_stairs: info.visibleStairs,
+      };
+    })(),
+    status: statusContext(state.screen[23] || ""),
     symbols: {
       "@": "player",
       ".": "room floor",

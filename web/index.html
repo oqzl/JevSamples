@@ -30,10 +30,14 @@
         <span>80 × 24 VIRTUAL TERMINAL</span>
         <button id="followButton" type="button">FOLLOWING @</button>
       </div>
-      <div id="terminalViewport" class="terminal-viewport" tabindex="0" aria-label="Scrollable Rogue terminal. Drag to pan.">
-        <pre id="terminalScreen" class="terminal-screen" aria-live="off"></pre>
+      <div class="terminal-frame">
+        <div id="terminalViewport" class="terminal-viewport" tabindex="0" aria-label="Scrollable Rogue terminal. Drag to pan.">
+          <pre id="terminalScreen" class="terminal-screen" aria-live="off"></pre>
+        </div>
+        <div id="messageOverlay" class="message-overlay" aria-live="polite" hidden></div>
       </div>
-      <div class="screen-note">Drag the terminal to pan. Touching it releases camera follow; FOLLOW @ recenters on Jev.</div>
+      <div id="rogueStatus" class="rogue-status" aria-label="Rogue player status">STATUS —</div>
+      <div class="screen-note">Drag the map to pan. Touching it releases camera follow; FOLLOW @ recenters on Jev. Status stays fixed outside the map viewport.</div>
     </section>
 
     <section class="controls" aria-label="Simulation controls">
