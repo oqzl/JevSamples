@@ -460,6 +460,42 @@ function extractGoalCandidates(screen, visited) {
   return selected.slice(0, 18);
 }
 
+
+function inventoryHas(inventory, pattern) {
+  return Object.values(inventory).some((description) => pattern.test(description));
+}
+
+function visibleMonsterCount(screen, radius = 3) {
+  const player = playerPosition(screen);
+  if (!player) return 0;
+  let count = 0;
+  for (let y = Math.max(1, player.y - radius); y <= Math.min(ROWS - 2, player.y + radius); y++) {
+    for (let x = Math.max(0, player.x - radius); x <= Math.min(COLS - 1, player.x + radius); x++) {
+      if (Math.max(Math.abs(x - player.x), Math.abs(y - player.y)) > radius) continue;
+      if (isMonster(screen[y]?.[x] ?? " ")) count++;
+    }
+  }
+  return count;
+}
+
+function tacticalTrigger(screen, inventory) {
+  const status = parseStatus(screen[23] || "");
+  if (!status) return false;
+  const hp = Number(status.hp);
+  const maxHp = Number(status.maxHp);
+  const hpRatio = maxHp > 0 ? hp / maxHp : 1;
+  const str = Number(status.str);
+  const maxStr = Number(status.maxStr);
+  const monsters = visibleMonsterCount(screen, 3);
+
+  if (/hungry|weak|faint/i.test(status.hunger || "") && inventoryHas(inventory, /food|ration|fruit|slime mold/i)) return true;
+  if (hpRatio < 0.75 && inventoryHas(inventory, /potion/i)) return true;
+  if (hpRatio < 0.55 && monsters === 0) return true;
+  if (str < maxStr && inventoryHas(inventory, /(restore strength|gain strength|potion)/i)) return true;
+  if (monsters > 0 && inventoryHas(inventory, /(wand|staff|scroll|potion)/i)) return true;
+  return false;
+}
+
 class JevController {
   constructor() {
     this.mode = "paused";
@@ -479,6 +515,7 @@ class JevController {
     this.recentActions = [];
     this.currentGoal = null;
     this.visitedByLevel = new Map();
+    this.lastTacticalFingerprint = "";
     this.screen = Array.from({ length: ROWS }, () => " ".repeat(COLS));
     this.updateModeUI();
   }
@@ -684,6 +721,49 @@ class JevController {
       this.recentMessages.some((message) => /amulet/i.test(message));
   }
 
+  tacticalFingerprint(screen) {
+    const status = parseStatus(screen[23] || "");
+    const nearby = visibleMonsterCount(screen, 3);
+    return JSON.stringify({
+      hp: status?.hp,
+      maxHp: status?.maxHp,
+      str: status?.str,
+      maxStr: status?.maxStr,
+      hunger: status?.hunger,
+      nearby,
+      inventory: this.inventory,
+    });
+  }
+
+  async askTactic(screen) {
+    this.currentAbort = new AbortController();
+    ui.apiStatus.textContent = "TACTIC…";
+    ui.apiStatus.classList.remove("error");
+
+    const response = await fetch("/api/decision", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        phase: "tactic",
+        screen,
+        inventory: this.inventory,
+        recentMessages: this.recentMessages,
+        recentActions: this.recentActions,
+      }),
+      signal: this.currentAbort.signal,
+    });
+    const data = await response.json().catch(() => ({ error: "Invalid server response" }));
+    this.currentAbort = null;
+    if (!response.ok) throw new Error(data.error || "Jev tactic request failed");
+
+    this.inputCount += 1;
+    ui.inputCount.textContent = String(this.inputCount);
+    this.renderDecision(data);
+    this.recentActions.push("tactic:" + data.label);
+    this.recentActions = this.recentActions.slice(-16);
+    return data;
+  }
+
   async askGoal(screen, candidates) {
     this.currentAbort = new AbortController();
     ui.apiStatus.textContent = "GOAL…";
@@ -719,6 +799,19 @@ class JevController {
     this.rememberCurrentPosition(screen);
     const player = playerPosition(screen);
     if (!player) return ".".charCodeAt(0);
+
+    const tacticFingerprint = this.tacticalFingerprint(screen);
+    if (tacticalTrigger(screen, this.inventory) && tacticFingerprint !== this.lastTacticalFingerprint) {
+      this.lastTacticalFingerprint = tacticFingerprint;
+      const tactic = await this.askTactic(screen);
+      if (Number.isFinite(tactic.key)) {
+        ui.apiStatus.textContent = "TACTIC";
+        return tactic.key;
+      }
+      ui.apiStatus.textContent = "ROUTE";
+    } else if (!tacticalTrigger(screen, this.inventory)) {
+      this.lastTacticalFingerprint = "";
+    }
 
     if (this.currentGoal && player.x === this.currentGoal.x && player.y === this.currentGoal.y) {
       const reached = this.currentGoal;
@@ -796,7 +889,9 @@ class JevController {
     const answer = data.answer || {};
     ui.lastAction.textContent = data.target
       ? (`TARGET ${data.target.type.toUpperCase()} · ${data.target.description}`)
-      : String(data.label || "—").replaceAll("_", " ").toUpperCase();
+      : data.phase === "tactic"
+        ? (`TACTIC · ${String(data.label || "—").replaceAll("_", " ").toUpperCase()}`)
+        : String(data.label || "—").replaceAll("_", " ").toUpperCase();
     ui.lastConfidence.textContent = Number.isFinite(answer.confidence) ? answer.confidence.toFixed(2) : "—";
     ui.lastLatency.textContent = Number.isFinite(data.elapsed_ms) ? data.elapsed_ms + " ms" : "—";
     ui.lastTokens.textContent = Number.isFinite(data.usage?.input_tokens) ? String(data.usage.input_tokens) : "—";

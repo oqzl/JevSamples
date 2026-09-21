@@ -1,6 +1,6 @@
 const TYPESAFE_URL = "https://api.typesafe.ai/v1/systemone";
 const MAX_BODY_BYTES = 16000;
-const PHASES = new Set(["turn", "goal", "direction", "item", "hand"]);
+const PHASES = new Set(["turn", "tactic", "goal", "direction", "item", "hand"]);
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -266,7 +266,118 @@ function itemQuestion(state) {
   return { criteria, keys };
 }
 
+
+function inventoryMatches(inventory, pattern) {
+  return Object.entries(inventory)
+    .filter(([, description]) => pattern.test(description))
+    .map(([letter, description]) => ({ letter, description }));
+}
+
+function nearbyMonsterCount(screen, radius = 3) {
+  const player = findPlayer(screen);
+  if (!player) return 0;
+  let count = 0;
+  for (let y = Math.max(1, player.y - radius); y <= Math.min(screen.length - 2, player.y + radius); y++) {
+    for (let x = Math.max(0, player.x - radius); x <= Math.min(79, player.x + radius); x++) {
+      if (Math.max(Math.abs(x - player.x), Math.abs(y - player.y)) > radius) continue;
+      const ch = screen[y]?.[x] ?? " ";
+      if (/^[A-Z]$/.test(ch)) count++;
+    }
+  }
+  return count;
+}
+
+function tacticQuestion(state) {
+  const status = statusContext(state.screen[23] || "");
+  const hpRatio = Number.isFinite(status.hp) && Number.isFinite(status.max_hp) && status.max_hp > 0
+    ? status.hp / status.max_hp
+    : 1;
+  const monsters = nearbyMonsterCount(state.screen, 3);
+  const food = inventoryMatches(state.inventory, /food|ration|fruit|slime mold/i);
+  const potions = inventoryMatches(state.inventory, /potion/i);
+  const healing = inventoryMatches(state.inventory, /(healing|extra healing)/i);
+  const restore = inventoryMatches(state.inventory, /(restore strength|gain strength)/i);
+  const scrolls = inventoryMatches(state.inventory, /scroll/i);
+  const weapons = inventoryMatches(state.inventory, /(mace|sword|bow|arrow|dagger|dart|shuriken|spear|weapon)/i);
+  const armor = inventoryMatches(state.inventory, /(armor|mail|leather|plate|splint|scale|chain)/i);
+  const rings = inventoryMatches(state.inventory, /ring/i);
+  const sticks = inventoryMatches(state.inventory, /(wand|staff)/i);
+
+  const criteria = {
+    continue_route: "Do not use an item now. Preserve resources and continue the current exploration/navigation goal.",
+  };
+  const keys = { continue_route: null };
+
+  if (/hungry|weak|faint/i.test(status.hunger || "") && food.length > 0) {
+    criteria.eat = "Eat food now. Hunger is already active, so survival should take priority over route progress. Known food: " + food.map((x) => x.description).join("; ");
+    keys.eat = "e";
+  }
+
+  if (potions.length > 0 && (hpRatio < 0.75 || status.strength < status.max_strength || monsters > 0)) {
+    const injury =
+      hpRatio <= 0.30 ? "HP is CRITICAL; strongly prefer a known healing/extra-healing potion if available." :
+      hpRatio <= 0.50 ? "HP is LOW; a known healing potion is substantially more valuable now than when healthy." :
+      hpRatio < 0.75 ? "HP is INJURED; healing has elevated value, but conserve it if immediate danger is low." :
+      "There is a tactical reason to consider a potion.";
+    criteria.quaff = injury + " Potions: " + potions.map((x) => x.description).join("; ");
+    keys.quaff = "q";
+  }
+
+  if (restore.length > 0 && Number.isFinite(status.strength) && Number.isFinite(status.max_strength) && status.strength < status.max_strength) {
+    criteria.quaff = (criteria.quaff ? criteria.quaff + " " : "") +
+      "Strength is reduced; restore/gain-strength potions are relevant: " + restore.map((x) => x.description).join("; ");
+    keys.quaff = "q";
+  }
+
+  if (scrolls.length > 0 && monsters > 0) {
+    criteria.read_scroll = "A monster is nearby. Consider a known tactical scroll only if its identified effect helps immediately; otherwise preserve it. Scrolls: " + scrolls.map((x) => x.description).join("; ");
+    keys.read_scroll = "r";
+  }
+
+  if (sticks.length > 0 && monsters > 0) {
+    criteria.zap = "A monster is nearby and a wand/staff is available. Use it if its known effect is safer or more efficient than ordinary combat. Wands/staves: " + sticks.map((x) => x.description).join("; ");
+    keys.zap = "z";
+  }
+
+  if (weapons.length > 0) {
+    criteria.wield = "Consider switching weapons only if a carried weapon is plausibly better than the current one. Weapons: " + weapons.map((x) => x.description).join("; ");
+    keys.wield = "w";
+  }
+
+  if (armor.length > 0) {
+    criteria.wear_armor = "Consider wearing carried armor if not already armored and it is likely useful. Armor: " + armor.map((x) => x.description).join("; ");
+    keys.wear_armor = "W";
+  }
+
+  if (rings.length > 0) {
+    criteria.put_on_ring = "Consider wearing a known beneficial ring when a hand is available; avoid unidentified or harmful rings without a reason. Rings: " + rings.map((x) => x.description).join("; ");
+    keys.put_on_ring = "P";
+  }
+
+  if (hpRatio < 0.55 && monsters === 0) {
+    criteria.rest = "Rest for one turn only if no immediate threat is visible and healing resources should be conserved. Current HP ratio is " + Math.round(hpRatio * 100) + "%.";
+    keys.rest = ".";
+  }
+
+  return {
+    question: choice(
+      {
+        role: "You are making a short-horizon tactical decision for an autonomous Rogue 5.4.4 player before navigation continues.",
+        objective: "Stay alive while preserving scarce consumables for when their expected value is high.",
+        health_policy: "The value of healing rises sharply as HP falls. At <=30% HP, known healing is normally urgent; at 30-50%, it is strongly favored under threat; at 50-75%, it is situational; when healthy, conserve healing.",
+        resource_policy: "Eat when hunger is active. Prefer identified beneficial items over unknown ones. Do not burn scrolls, potions, rings, or charges merely because they exist.",
+        navigation_policy: "Choose continue_route when no tactical action has enough value to interrupt the current persistent goal.",
+        question: "Should the player interrupt navigation for one tactical action now?",
+      },
+      criteria,
+    ),
+    keys,
+  };
+}
+
 function buildQuestion(state) {
+  if (state.phase === "tactic") return tacticQuestion(state);
+
   if (state.phase === "goal") {
     const criteria = {};
     const targets = {};
@@ -457,6 +568,18 @@ export default {
       return json({
         label,
         target,
+        answer,
+        model: result.model,
+        usage: result.usage,
+        elapsed_ms: Date.now() - started,
+        phase: state.phase,
+      });
+    }
+
+    if (state.phase === "tactic" && label === "continue_route") {
+      return json({
+        key: null,
+        label,
         answer,
         model: result.model,
         usage: result.usage,
