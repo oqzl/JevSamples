@@ -424,7 +424,7 @@ function buildQuestion(state) {
         {
           role: "You are choosing a persistent navigation goal for an autonomous Rogue 5.4.4 player. Code, not you, will compute and follow the shortest known path to the chosen coordinate.",
           objective: "WIN THE GAME: survive, explore each level, descend toward level 26, obtain the Amulet of Yendor, then climb back to the surface.",
-          priority: "First handle immediate survival or a nearby blocking monster. The Amulet is mandatory. When safe, visible useful items are normally worth collecting, especially food and equipment. Newly discovered doors and unexplored frontiers are the main way to expand the known map and should be pursued rather than wandering inside an already seen room. Gold is optional. Use stairs when there is no clearly better nearby objective or the useful reachable area is already explored.",
+          priority: "First handle immediate survival or a nearby blocking monster. The controller already preempts navigation for nearby reachable non-gold items, so remaining item candidates are usually farther away or gold. The Amulet is mandatory. Newly discovered doors and unexplored frontiers are the main way to expand the known map after useful nearby items are collected. Gold is optional. Use stairs when there is no clearly better nearby objective or the useful reachable area is already explored.",
           persistence: "Pick a destination worth committing several movement turns to. Do not optimize the next single key; choose what the player should accomplish next.",
           question: "Which candidate should become the next persistent goal?",
         },

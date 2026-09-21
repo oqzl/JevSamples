@@ -396,6 +396,35 @@ function candidateDescription(type, ch, x, y, distance, extra = "") {
   return `${label} at (${x},${y}), ${distance} steps away${extra ? ". " + extra : ""}`;
 }
 
+function pickupPriority(candidate) {
+  if (candidate.ch === ",") return 0;
+  if (candidate.ch === ":") return 1;
+  if (candidate.ch === "]" || candidate.ch === ")") return 2;
+  if (candidate.ch === "!" || candidate.ch === "?" || candidate.ch === "=" || candidate.ch === "/") return 3;
+  return 4;
+}
+
+function preferredVisibleItem(screen, visited, inventory) {
+  const candidates = extractGoalCandidates(screen, visited)
+    .filter((candidate) => candidate.type === "item" && candidate.ch !== "*");
+  if (candidates.length === 0) return null;
+
+  const packNearlyFull = Object.keys(inventory).length >= 22;
+  const usable = candidates.filter((candidate) =>
+    candidate.ch === "," || !packNearlyFull
+  );
+  if (usable.length === 0) return null;
+
+  usable.sort((a, b) =>
+    pickupPriority(a) - pickupPriority(b) ||
+    a.distance - b.distance
+  );
+
+  const best = usable[0];
+  if (best.ch === ",") return best;
+  return best.distance <= 14 ? best : null;
+}
+
 function extractGoalCandidates(screen, visited) {
   const player = playerPosition(screen);
   if (!player) return [];
@@ -953,6 +982,17 @@ class JevController {
       ui.apiStatus.textContent = "ROUTE";
     } else if (!needsTactic) {
       this.lastTacticalFingerprint = "";
+    }
+
+    const pickup = preferredVisibleItem(screen, this.visitedSet(screen), this.inventory);
+    if (pickup && (!this.currentGoal ||
+        this.currentGoal.type !== "item" ||
+        this.currentGoal.x !== pickup.x ||
+        this.currentGoal.y !== pickup.y)) {
+      this.currentGoal = pickup;
+      ui.apiStatus.textContent = pickup.ch === "," ? "AMULET" : "PICKUP";
+      ui.lastAction.textContent = "PICKUP · " + pickup.description;
+      ui.distribution.replaceChildren();
     }
 
     if (this.currentGoal && player.x === this.currentGoal.x && player.y === this.currentGoal.y) {
