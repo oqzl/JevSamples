@@ -99,13 +99,14 @@ h2 { margin-top: 4px; font: 700 13px/1.25 ui-monospace, SFMono-Regular, Menlo, m
 .message-strip[hidden] { display: none; }
 .rip-overlay {
   position: absolute;
-  inset: 0;
+  inset: 1px;
   z-index: 4;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 24px;
   overflow: hidden;
+  border-radius: 5px 5px 0 0;
   background: #000;
   pointer-events: none;
 }
