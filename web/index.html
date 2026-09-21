@@ -28,7 +28,7 @@
   <main class="shell">
     <section class="screen-section" aria-label="Rogue terminal">
       <div class="screen-toolbar">
-        <span>80 × 24 VIRTUAL TERMINAL</span>
+        <span>80 × 24</span>
         <button id="followButton" type="button">FOLLOWING @</button>
       </div>
       <div id="messageOverlay" class="message-strip" aria-live="polite" hidden></div>
@@ -39,7 +39,6 @@
         <div id="ripOverlay" class="rip-overlay" hidden><pre id="ripArt"></pre></div>
       </div>
       <div id="rogueStatus" class="rogue-status" aria-label="Rogue player status">STATUS —</div>
-      <div class="screen-note">Drag the map to pan. Touching it releases camera follow; FOLLOW @ recenters on Jev. Status stays fixed outside the map viewport.</div>
     </section>
 
     <section class="controls" aria-label="Simulation controls">
@@ -49,12 +48,12 @@
       <button id="pauseButton" type="button" class="selected">PAUSE</button>
       <button id="restartButton" type="button" class="secondary">NEW RUN</button>
     </section>
-    <div class="mode-line">MODE <b id="modeLabel">PAUSED</b><span>RUN adds 0.8 s/turn · FAST keeps a 0.12 s minimum so movement remains visible</span></div>
+    <div class="mode-line">MODE <b id="modeLabel">PAUSED</b></div>
 
     <section class="decision" aria-label="Last Jev decision">
       <div class="decision-head">
         <div>
-          <div class="eyebrow">LAST TYPED DECISION</div>
+          <div class="eyebrow">DECISION</div>
           <h2 id="lastAction">WAITING FOR RUN / FAST / STEP</h2>
         </div>
         <div class="metrics">
@@ -68,8 +67,7 @@
 
     <section class="messages" aria-label="Recent Rogue messages">
       <div class="section-head">
-        <div class="eyebrow">RECENT GAME OUTPUT</div>
-        <span>Jev receives these messages with the 80×24 screen.</span>
+        <div class="eyebrow">LOG</div>
       </div>
       <ol id="messageLog"></ol>
     </section>
