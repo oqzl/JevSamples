@@ -4,6 +4,7 @@ const ROWS = 24;
 const COLS = 80;
 const ESC = 27;
 const RUN_DELAY_MS = 800;
+const FAST_DELAY_MS = 120;
 const FOLLOWUP_DELAY_MS = 120;
 
 const $ = (id) => document.getElementById(id);
@@ -635,6 +636,9 @@ class JevController {
 
     if (this.mode === "run") {
       await sleep(phase === "turn" ? RUN_DELAY_MS : FOLLOWUP_DELAY_MS);
+      if (this.mode === "paused") return this.waitUntilAllowed(phase);
+    } else if (this.mode === "fast" && phase === "turn") {
+      await sleep(FAST_DELAY_MS);
       if (this.mode === "paused") return this.waitUntilAllowed(phase);
     }
   }
