@@ -28,7 +28,11 @@
   <main class="shell">
     <section class="screen-section" aria-label="Rogue terminal">
       <div class="screen-toolbar">
-        <span>80 × 24</span>
+        <div class="view-switch" aria-label="View mode">
+          <span>VIEW</span>
+          <button id="view2dButton" type="button" class="active" aria-pressed="true">2D</button>
+          <button id="view3dButton" type="button" aria-pressed="false">3D</button>
+        </div>
         <button id="followButton" type="button">FOLLOWING @</button>
       </div>
       <div id="messageOverlay" class="message-strip" aria-live="polite" hidden></div>
@@ -36,6 +40,7 @@
         <div id="terminalViewport" class="terminal-viewport" tabindex="0" aria-label="Scrollable Rogue terminal. Drag to pan.">
           <pre id="terminalScreen" class="terminal-screen" aria-live="off"></pre>
         </div>
+        <canvas id="firstPersonCanvas" class="first-person-canvas" aria-label="First-person rendering of the visible Rogue map" hidden></canvas>
         <div id="ripOverlay" class="rip-overlay" hidden><pre id="ripArt"></pre></div>
       </div>
       <div id="rogueStatus" class="rogue-status" aria-label="Rogue player status">STATUS —</div>

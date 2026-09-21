@@ -11,6 +11,9 @@ const $ = (id) => document.getElementById(id);
 const ui = {
   viewport: $("terminalViewport"),
   terminal: $("terminalScreen"),
+  firstPerson: $("firstPersonCanvas"),
+  view2d: $("view2dButton"),
+  view3d: $("view3dButton"),
   messageOverlay: $("messageOverlay"),
   ripOverlay: $("ripOverlay"),
   ripArt: $("ripArt"),
@@ -368,6 +371,127 @@ function isRipScreen(screen) {
   return joined.includes("rest") && joined.includes("peace") && joined.includes("killed by");
 }
 
+
+const FIRST_PERSON_FOV = Math.PI * 0.38;
+const FIRST_PERSON_RANGE = 18;
+
+function firstPersonWall(ch) {
+  return ch === " " || ch === "|" || ch === "-" || ch === "+";
+}
+
+function firstPersonGlyph(ch) {
+  return isMonster(ch) || ITEM_SYMBOLS.has(ch) || ch === "%" || ch === "^";
+}
+
+function drawFirstPerson(screen, facing) {
+  const canvas = ui.firstPerson;
+  if (!canvas || canvas.hidden) return;
+  const player = playerPosition(screen);
+  if (!player) return;
+
+  const rect = canvas.getBoundingClientRect();
+  const cssWidth = Math.max(280, Math.round(rect.width || ui.viewport.clientWidth || 560));
+  const cssHeight = Math.round(cssWidth * 0.75);
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const width = Math.min(960, Math.round(cssWidth * dpr));
+  const height = Math.min(720, Math.round(cssHeight * dpr));
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+  }
+
+  const ctx = canvas.getContext("2d", { alpha: false });
+  if (!ctx) return;
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, width, height / 2);
+  ctx.fillStyle = "#061008";
+  ctx.fillRect(0, height / 2, width, height / 2);
+
+  const fx = facing.x;
+  const fy = facing.y;
+  const facingAngle = Math.atan2(fy, fx);
+  const originX = player.x + 0.5;
+  const originY = player.y + 0.5;
+  const rayCount = Math.min(480, width);
+  const sliceWidth = width / rayCount;
+  const depth = new Float32Array(rayCount);
+
+  for (let ray = 0; ray < rayCount; ray++) {
+    const normalized = (ray + 0.5) / rayCount - 0.5;
+    const angle = facingAngle + normalized * FIRST_PERSON_FOV;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    let distance = 0.04;
+    let hit = " ";
+    while (distance < FIRST_PERSON_RANGE) {
+      const x = Math.floor(originX + cos * distance);
+      const y = Math.floor(originY + sin * distance);
+      if (x < 0 || x >= COLS || y <= 0 || y >= ROWS - 1) {
+        hit = " ";
+        break;
+      }
+      const ch = screen[y]?.[x] ?? " ";
+      if (firstPersonWall(ch)) {
+        hit = ch;
+        break;
+      }
+      distance += 0.045;
+    }
+    const corrected = Math.max(0.08, distance * Math.cos(angle - facingAngle));
+    depth[ray] = corrected;
+    const wallHeight = Math.min(height * 1.7, height / corrected);
+    const top = (height - wallHeight) / 2;
+    const shade = Math.max(30, Math.min(180, Math.round(190 - corrected * 13)));
+    ctx.fillStyle = hit === "+"
+      ? `rgb(${Math.round(shade * 0.75)},${shade},${Math.round(shade * 0.72)})`
+      : `rgb(${Math.round(shade * 0.55)},${shade},${Math.round(shade * 0.62)})`;
+    ctx.fillRect(Math.floor(ray * sliceWidth), Math.floor(top), Math.ceil(sliceWidth + 1), Math.ceil(wallHeight));
+  }
+
+  const rightX = -fy;
+  const rightY = fx;
+  const sprites = [];
+  for (let y = 1; y < ROWS - 1; y++) {
+    for (let x = 0; x < COLS; x++) {
+      const ch = screen[y]?.[x] ?? " ";
+      if (!firstPersonGlyph(ch)) continue;
+      const dx = x + 0.5 - originX;
+      const dy = y + 0.5 - originY;
+      const forward = dx * fx + dy * fy;
+      if (forward <= 0.15 || forward > FIRST_PERSON_RANGE) continue;
+      const side = dx * rightX + dy * rightY;
+      const angle = Math.atan2(side, forward);
+      if (Math.abs(angle) > FIRST_PERSON_FOV * 0.58) continue;
+      sprites.push({ ch, forward, angle });
+    }
+  }
+  sprites.sort((a, b) => b.forward - a.forward);
+
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  for (const sprite of sprites) {
+    const screenX = (0.5 + sprite.angle / FIRST_PERSON_FOV) * width;
+    const ray = clamp(Math.floor(screenX / sliceWidth), 0, rayCount - 1);
+    if (depth[ray] + 0.15 < sprite.forward) continue;
+    const size = clamp(height / sprite.forward * 0.48, 14 * dpr, 92 * dpr);
+    ctx.font = `700 ${Math.round(size)}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+    ctx.fillStyle = isMonster(sprite.ch)
+      ? "#ffb3a8"
+      : sprite.ch === "%" ? "#bfc8ff" : "#b7ffc7";
+    ctx.fillText(sprite.ch, screenX, height / 2 + size * 0.12);
+  }
+
+  ctx.strokeStyle = "rgba(183,255,199,.35)";
+  ctx.lineWidth = Math.max(1, dpr);
+  ctx.beginPath();
+  ctx.moveTo(width / 2 - 5 * dpr, height / 2);
+  ctx.lineTo(width / 2 + 5 * dpr, height / 2);
+  ctx.moveTo(width / 2, height / 2 - 5 * dpr);
+  ctx.lineTo(width / 2, height / 2 + 5 * dpr);
+  ctx.stroke();
+}
+
 function centeredRipText(screen) {
   const lines = screen.slice(0, ROWS - 1);
   const nonEmpty = lines
@@ -604,6 +728,9 @@ class JevController {
     this.lastDecisionContext = "";
     this.lastEquipmentReviewSignature = "";
     this.lastPlayerPosition = null;
+    this.viewMode = "2d";
+    this.viewPlayerPosition = null;
+    this.facing = { x: 0, y: -1 };
     this.screen = Array.from({ length: ROWS }, () => " ".repeat(COLS));
     this.updateModeUI();
     this.renderInventory();
@@ -625,6 +752,17 @@ class JevController {
     ui.floor.textContent = status?.level || "—";
     renderStatus(screen[23] || "");
     ui.terminal.textContent = screen.slice(0, ROWS - 1).join("\n");
+    const viewPlayer = playerPosition(screen);
+    if (viewPlayer && this.viewPlayerPosition) {
+      const dx = viewPlayer.x - this.viewPlayerPosition.x;
+      const dy = viewPlayer.y - this.viewPlayerPosition.y;
+      if ((dx !== 0 || dy !== 0) && Math.abs(dx) <= 1 && Math.abs(dy) <= 1) {
+        const length = Math.hypot(dx, dy) || 1;
+        this.facing = { x: dx / length, y: dy / length };
+      }
+    }
+    if (viewPlayer) this.viewPlayerPosition = { x: viewPlayer.x, y: viewPlayer.y };
+    if (this.viewMode === "3d") requestAnimationFrame(() => drawFirstPerson(this.screen, this.facing));
 
     const rip = isRipScreen(screen);
     ui.ripOverlay.hidden = !rip;
@@ -635,6 +773,21 @@ class JevController {
       ui.messageOverlay.hidden = false;
     }
     if (this.following) requestAnimationFrame(() => this.centerPlayer());
+  }
+
+  setViewMode(mode) {
+    if (mode !== "2d" && mode !== "3d") return;
+    this.viewMode = mode;
+    const is3d = mode === "3d";
+    ui.viewport.hidden = is3d;
+    ui.firstPerson.hidden = !is3d;
+    ui.follow.hidden = is3d;
+    ui.view2d.classList.toggle("active", !is3d);
+    ui.view3d.classList.toggle("active", is3d);
+    ui.view2d.setAttribute("aria-pressed", String(!is3d));
+    ui.view3d.setAttribute("aria-pressed", String(is3d));
+    if (is3d) requestAnimationFrame(() => drawFirstPerson(this.screen, this.facing));
+    else if (this.following) requestAnimationFrame(() => this.centerPlayer());
   }
 
   learnInventory(message) {
@@ -1109,6 +1262,11 @@ const backend = new BrowserCursesBackend(controller);
 ui.viewport.addEventListener("pointerdown", () => controller.setFollowing(false), { passive: true });
 ui.viewport.addEventListener("wheel", () => controller.setFollowing(false), { passive: true });
 ui.follow.addEventListener("click", () => controller.setFollowing(true));
+ui.view2d.addEventListener("click", () => controller.setViewMode("2d"));
+ui.view3d.addEventListener("click", () => controller.setViewMode("3d"));
+window.addEventListener("resize", () => {
+  if (controller.viewMode === "3d") drawFirstPerson(controller.screen, controller.facing);
+});
 ui.run.addEventListener("click", () => controller.setMode("run"));
 ui.fast.addEventListener("click", () => controller.setMode("fast"));
 ui.step.addEventListener("click", () => controller.step());
@@ -1116,6 +1274,7 @@ ui.pause.addEventListener("click", () => controller.setMode("paused"));
 ui.restart.addEventListener("click", () => location.reload());
 
 controller.setFollowing(true);
+controller.setViewMode("2d");
 controller.screenUpdated(backend.snapshot());
 
 (async () => {
