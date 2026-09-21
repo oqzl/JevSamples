@@ -416,6 +416,9 @@ function drawFirstPerson(screen, facing) {
   const rayCount = Math.min(480, width);
   const sliceWidth = width / rayCount;
   const depth = new Float32Array(rayCount);
+  const wallTop = new Float32Array(rayCount);
+  const wallBottom = new Float32Array(rayCount);
+  const wallHit = new Array(rayCount).fill(" ");
 
   for (let ray = 0; ray < rayCount; ray++) {
     const normalized = (ray + 0.5) / rayCount - 0.5;
@@ -438,15 +441,54 @@ function drawFirstPerson(screen, facing) {
       }
       distance += 0.045;
     }
+
     const corrected = Math.max(0.08, distance * Math.cos(angle - facingAngle));
     depth[ray] = corrected;
+    wallHit[ray] = hit;
     const wallHeight = Math.min(height * 1.7, height / corrected);
     const top = (height - wallHeight) / 2;
-    const shade = Math.max(30, Math.min(180, Math.round(190 - corrected * 13)));
-    ctx.fillStyle = hit === "+"
-      ? `rgb(${Math.round(shade * 0.75)},${shade},${Math.round(shade * 0.72)})`
-      : `rgb(${Math.round(shade * 0.55)},${shade},${Math.round(shade * 0.62)})`;
-    ctx.fillRect(Math.floor(ray * sliceWidth), Math.floor(top), Math.ceil(sliceWidth + 1), Math.ceil(wallHeight));
+    const bottom = top + wallHeight;
+    wallTop[ray] = top;
+    wallBottom[ray] = bottom;
+
+    const proximity = clamp(1 - corrected / FIRST_PERSON_RANGE, 0, 1);
+    const shade = Math.round(28 + 116 * proximity);
+    const alpha = 0.07 + 0.25 * proximity;
+    const red = hit === "+" ? Math.round(shade * 0.74) : Math.round(shade * 0.46);
+    const green = shade;
+    const blue = hit === "+" ? Math.round(shade * 0.72) : Math.round(shade * 0.58);
+    ctx.fillStyle = `rgba(${red},${green},${blue},${alpha.toFixed(3)})`;
+    ctx.fillRect(
+      Math.floor(ray * sliceWidth),
+      Math.floor(top),
+      Math.ceil(sliceWidth + 1),
+      Math.ceil(wallHeight),
+    );
+  }
+
+  ctx.lineWidth = Math.max(1, dpr * 0.75);
+  for (let ray = 1; ray < rayCount; ray++) {
+    const proximity = clamp(1 - depth[ray] / FIRST_PERSON_RANGE, 0, 1);
+    const edgeAlpha = 0.10 + 0.42 * proximity;
+    ctx.strokeStyle = `rgba(183,255,199,${edgeAlpha.toFixed(3)})`;
+
+    ctx.beginPath();
+    ctx.moveTo((ray - 1) * sliceWidth, wallTop[ray - 1]);
+    ctx.lineTo(ray * sliceWidth, wallTop[ray]);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo((ray - 1) * sliceWidth, wallBottom[ray - 1]);
+    ctx.lineTo(ray * sliceWidth, wallBottom[ray]);
+    ctx.stroke();
+
+    const depthJump = Math.abs(depth[ray] - depth[ray - 1]);
+    if (depthJump > 0.32 || wallHit[ray] !== wallHit[ray - 1]) {
+      ctx.beginPath();
+      ctx.moveTo(ray * sliceWidth, Math.min(wallTop[ray], wallTop[ray - 1]));
+      ctx.lineTo(ray * sliceWidth, Math.max(wallBottom[ray], wallBottom[ray - 1]));
+      ctx.stroke();
+    }
   }
 
   const rightX = -fy;
