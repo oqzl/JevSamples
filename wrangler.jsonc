@@ -6,6 +6,9 @@
   "build": {
     "command": "npm run build"
   },
+  "secrets": {
+    "required": ["TYPESAFE_API_KEY"]
+  },
   "assets": {
     "directory": "./web",
     "binding": "ASSETS",

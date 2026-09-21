@@ -188,9 +188,16 @@ class BrowserCursesBackend {
   snapshot() { return this.physical.map((row) => row.join("")); }
 }
 
+function isAutoContinueScreen(screen) {
+  const joined = screen.join("\n").toLowerCase();
+  if (joined.includes("--press space to continue--")) return true;
+  return joined.includes("rest") && joined.includes("peace") && joined.includes("killed by");
+}
+
 function detectPhase(screen) {
   const top = (screen[0] || "").trim().toLowerCase();
   if (top.includes("--more--")) return "more";
+  if (isAutoContinueScreen(screen)) return "continue";
   if (top.includes("direction")) return "direction";
   if (top.includes("left or right") || top.includes("which hand")) return "hand";
   if (
@@ -333,7 +340,8 @@ class JevController {
   async getch(screen) {
     let phase = detectPhase(screen);
 
-    if (phase === "more") {
+    if (phase === "more" || phase === "continue") {
+      ui.apiStatus.textContent = phase === "continue" ? "CONTINUE" : "MORE";
       await sleep(70);
       return " ".charCodeAt(0);
     }
