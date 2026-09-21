@@ -420,16 +420,14 @@ function preferredVisibleItem(screen, visited, inventory) {
     a.distance - b.distance
   );
 
-  const best = usable[0];
-  if (best.ch === ",") return best;
-  return best.distance <= 14 ? best : null;
+  return usable[0];
 }
 
 function extractGoalCandidates(screen, visited) {
   const player = playerPosition(screen);
   if (!player) return [];
   const distances = distanceMap(screen, player);
-  const buckets = { item: [], door: [], stairs: [], monster: [], frontier: [], explore: [] };
+  const buckets = { item: [], gold: [], door: [], stairs: [], monster: [], frontier: [], explore: [] };
 
   for (let y = 1; y < ROWS - 1; y++) {
     for (let x = 0; x < COLS; x++) {
@@ -441,9 +439,10 @@ function extractGoalCandidates(screen, visited) {
       if (ITEM_SYMBOLS.has(ch)) {
         const extra = ch === "," ? "This is the mandatory Amulet." :
           ch === ":" ? "Food directly supports survival." :
-          ch === "*" ? "Gold is optional compared with exploration and survival." :
+          ch === "*" ? "Gold is score only and should not displace survival, useful items, exploration, or stairs." :
           "Potentially useful equipment or consumable.";
-        buckets.item.push({ id: `item_${x}_${y}`, type: "item", ch, x, y, distance, description: candidateDescription("item", ch, x, y, distance, extra) });
+        const candidate = { id: `item_${x}_${y}`, type: "item", ch, x, y, distance, description: candidateDescription("item", ch, x, y, distance, extra) };
+        (ch === "*" ? buckets.gold : buckets.item).push(candidate);
         continue;
       }
       if (ch === "%") {
@@ -488,7 +487,8 @@ function extractGoalCandidates(screen, visited) {
     ...buckets.monster.slice(0, 2),
     ...buckets.frontier.slice(0, 4),
   ];
-  if (selected.length < 4) selected.push(...buckets.explore.slice(0, 4 - selected.length));
+  if (selected.length < 6) selected.push(...buckets.explore.slice(0, 6 - selected.length));
+  if (selected.length < 18) selected.push(...buckets.gold.slice(0, 1));
   return selected.slice(0, 18);
 }
 
